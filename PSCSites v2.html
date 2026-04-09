@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PSC Agent — Website Creator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Serif+Display:ital@0;1&family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --black:#0A0A0A;--white:#FFFFFF;
+  --off:#F8F7F5;--g1:#F0EFED;--g2:#E0DFDC;
+  --g3:#9A9896;--g4:#444442;
+  --border:1px solid #E0DFDC;
+}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Inter',sans-serif;font-weight:300;background:var(--black);color:var(--white)}
+
+/* ═══════════════════════════════
+   SCREENS
+═══════════════════════════════ */
+.screen{position:fixed;inset:0;display:none;flex-direction:column}
+.screen.active{display:flex}
+
+/* ═══════════════════════════════
+   LOGIN SCREEN
+═══════════════════════════════ */
+#s-login{
+  background:var(--black);
+  align-items:center;justify-content:center;
+  text-align:center;padding:40px 24px;
+  overflow:hidden;
+}
+.lr{position:absolute;border-radius:50%;pointer-events:none;top:50%;left:50%;transform:translate(-50%,-50%)}
+.l-wordmark{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:clamp(14px,3vw,20px);
+  letter-spacing:0.28em;color:var(--g3);
+  margin-bottom:48px;position:relative;z-index:2;
+}
+.l-logo{
+  position:relative;z-index:2;margin-bottom:48px;
+}
+.l-logo-main{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:clamp(52px,12vw,96px);
+  line-height:0.86;letter-spacing:-0.01em;
+  color:var(--white);display:block;
+}
+.l-logo-sub{
+  font-family:'DM Serif Display',serif;
+  font-style:italic;font-size:clamp(14px,2.5vw,20px);
+  color:var(--g3);display:block;margin-top:10px;
+}
+.l-form{position:relative;z-index:2;width:100%;max-width:300px}
+.l-label{
+  font-size:9px;font-weight:600;letter-spacing:0.22em;
+  color:var(--g4);text-transform:uppercase;
+  display:block;margin-bottom:10px;
+}
+.l-input{
+  width:100%;background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.1);
+  color:var(--white);font-family:'Inter',sans-serif;
+  font-size:15px;font-weight:300;padding:14px 18px;
+  outline:none;text-align:center;letter-spacing:0.14em;
+  transition:border-color 0.2s;margin-bottom:12px;
+}
+.l-input::placeholder{color:var(--g4);letter-spacing:0.1em}
+.l-input:focus{border-color:rgba(255,255,255,0.35)}
+.l-input.err{border-color:#C0392B;animation:shake 0.4s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+.l-btn{
+  width:100%;background:var(--white);color:var(--black);
+  border:none;padding:15px;
+  font-family:'Inter',sans-serif;font-size:11px;
+  font-weight:600;letter-spacing:0.18em;text-transform:uppercase;
+  cursor:pointer;transition:all 0.2s;
+}
+.l-btn:hover{background:var(--g2)}
+.l-err{font-size:10px;color:#E74C3C;letter-spacing:0.06em;margin-top:8px;min-height:16px;text-align:center}
+.l-footer{
+  position:absolute;bottom:28px;left:0;right:0;
+  text-align:center;font-size:8px;color:var(--g4);letter-spacing:0.16em;
+}
+
+/* ═══════════════════════════════
+   MAIN APP — SPLIT SCREEN
+═══════════════════════════════ */
+#s-app{flex-direction:row;background:var(--white)}
+
+/* ── LEFT: CHAT PANEL ── */
+.chat-panel{
+  width:380px;flex-shrink:0;
+  background:var(--black);
+  display:flex;flex-direction:column;
+  height:100vh;border-right:1px solid rgba(255,255,255,0.06);
+}
+
+/* Chat topbar */
+.chat-topbar{
+  padding:16px 20px;
+  border-bottom:1px solid rgba(255,255,255,0.06);
+  display:flex;align-items:center;
+  justify-content:space-between;flex-shrink:0;
+}
+.agent-info{display:flex;align-items:center;gap:10px}
+.agent-avatar{
+  width:32px;height:32px;
+  background:var(--white);
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.agent-avatar span{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:13px;color:var(--black);letter-spacing:0.06em;
+}
+.agent-name{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:14px;color:var(--white);
+  letter-spacing:0.1em;
+}
+.agent-status{
+  font-size:9px;color:var(--g3);
+  letter-spacing:0.08em;
+  display:flex;align-items:center;gap:5px;
+}
+.status-dot{
+  width:5px;height:5px;border-radius:50%;
+  background:#4CAF50;animation:pulse-dot 2s ease infinite;
+}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:0.4}}
+
+.topbar-right{display:flex;gap:8px;align-items:center}
+.tbar-btn{
+  background:rgba(255,255,255,0.06);
+  border:none;color:var(--g3);
+  font-family:'Inter',sans-serif;font-size:9px;
+  font-weight:500;letter-spacing:0.12em;text-transform:uppercase;
+  padding:6px 12px;cursor:pointer;transition:all 0.2s;
+}
+.tbar-btn:hover{background:rgba(255,255,255,0.12);color:var(--white)}
+.tbar-btn.deploy{background:var(--white);color:var(--black)}
+.tbar-btn.deploy:hover{background:var(--g2)}
+
+/* Messages */
+.chat-msgs{
+  flex:1;overflow-y:auto;
+  padding:20px 16px;
+  display:flex;flex-direction:column;
+  gap:12px;
+  scroll-behavior:smooth;
+}
+.chat-msgs::-webkit-scrollbar{width:3px}
+.chat-msgs::-webkit-scrollbar-track{background:transparent}
+.chat-msgs::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1)}
+
+/* Message bubbles */
+.msg{display:flex;gap:8px;align-items:flex-start;animation:msgIn 0.3s ease}
+@keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.msg.user{flex-direction:row-reverse}
+.msg-avatar{
+  width:26px;height:26px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,0.08);
+  font-family:'Bebas Neue',sans-serif;font-size:10px;
+  color:var(--g3);letter-spacing:0.04em;
+}
+.msg.user .msg-avatar{background:var(--white);color:var(--black)}
+.msg-bubble{
+  max-width:280px;
+  background:rgba(255,255,255,0.06);
+  padding:11px 14px;
+  font-size:12px;font-weight:300;
+  color:rgba(255,255,255,0.85);
+  line-height:1.65;
+}
+.msg.user .msg-bubble{
+  background:var(--white);color:var(--black);
+}
+.msg-bubble strong{font-weight:500;color:var(--white)}
+.msg.user .msg-bubble strong{color:var(--black)}
+
+/* Typing indicator */
+.typing-indicator{display:flex;gap:4px;align-items:center;padding:4px 0}
+.typing-dot{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--g3);
+  animation:typing 1.2s ease infinite;
+}
+.typing-dot:nth-child(2){animation-delay:0.2s}
+.typing-dot:nth-child(3){animation-delay:0.4s}
+@keyframes typing{0%,60%,100%{transform:translateY(0);opacity:0.4}30%{transform:translateY(-4px);opacity:1}}
+
+/* Quick action chips */
+.quick-chips{
+  display:flex;flex-wrap:wrap;gap:6px;
+  padding:0 16px 12px;flex-shrink:0;
+}
+.chip{
+  background:rgba(255,255,255,0.06);
+  border:1px solid rgba(255,255,255,0.1);
+  color:var(--g3);font-family:'Inter',sans-serif;
+  font-size:10px;font-weight:400;letter-spacing:0.04em;
+  padding:6px 12px;cursor:pointer;
+  transition:all 0.15s;white-space:nowrap;
+}
+.chip:hover{
+  background:rgba(255,255,255,0.12);
+  color:var(--white);border-color:rgba(255,255,255,0.25);
+}
+
+/* Chat input area */
+.chat-input-area{
+  border-top:1px solid rgba(255,255,255,0.06);
+  padding:14px 16px;flex-shrink:0;
+  background:var(--black);
+}
+.input-row{display:flex;gap:8px;align-items:flex-end}
+.chat-input-wrap{
+  flex:1;
+  background:rgba(255,255,255,0.06);
+  border:1px solid rgba(255,255,255,0.1);
+  display:flex;flex-direction:column;
+  transition:border-color 0.2s;
+}
+.chat-input-wrap:focus-within{border-color:rgba(255,255,255,0.3)}
+.chat-ta{
+  width:100%;background:transparent;border:none;
+  color:var(--white);font-family:'Inter',sans-serif;
+  font-size:12px;font-weight:300;line-height:1.6;
+  padding:11px 14px;outline:none;resize:none;
+  min-height:44px;max-height:120px;
+}
+.chat-ta::placeholder{color:var(--g4)}
+.input-actions{
+  display:flex;align-items:center;
+  justify-content:space-between;
+  padding:6px 10px 8px;
+  border-top:1px solid rgba(255,255,255,0.06);
+}
+.attach-btn{
+  background:none;border:none;
+  color:var(--g4);cursor:pointer;
+  font-size:14px;transition:color 0.15s;
+  display:flex;align-items:center;gap:6px;
+  font-family:'Inter',sans-serif;font-size:10px;letter-spacing:0.06em;
+}
+.attach-btn:hover{color:var(--white)}
+.attach-btn input{display:none}
+.send-btn{
+  background:var(--white);color:var(--black);
+  border:none;padding:8px 16px;
+  font-family:'Inter',sans-serif;font-size:10px;
+  font-weight:600;letter-spacing:0.14em;text-transform:uppercase;
+  cursor:pointer;transition:background 0.2s;
+  white-space:nowrap;
+}
+.send-btn:hover{background:var(--g2)}
+.send-btn:disabled{background:rgba(255,255,255,0.15);color:var(--g4);cursor:not-allowed}
+
+/* Uploaded image previews in chat */
+.upload-thumbs{
+  display:flex;gap:6px;flex-wrap:wrap;
+  padding:8px 14px 0;
+}
+.upload-thumb{
+  width:48px;height:48px;object-fit:cover;
+  border:1px solid rgba(255,255,255,0.1);
+  position:relative;cursor:pointer;
+}
+.thumb-remove{
+  position:absolute;top:-4px;right:-4px;
+  width:14px;height:14px;border-radius:50%;
+  background:var(--black);border:1px solid rgba(255,255,255,0.2);
+  color:var(--white);font-size:8px;display:flex;
+  align-items:center;justify-content:center;cursor:pointer;
+}
+
+/* ── RIGHT: PREVIEW PANEL ── */
+.preview-panel{
+  flex:1;background:var(--g1);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+.preview-bar{
+  background:var(--white);
+  border-bottom:var(--border);
+  padding:10px 16px;
+  display:flex;align-items:center;
+  justify-content:space-between;
+  flex-shrink:0;
+}
+.preview-url-wrap{
+  display:flex;align-items:center;gap:8px;
+  background:var(--g1);border:var(--border);
+  padding:6px 14px;flex:1;max-width:400px;
+}
+.url-dot{width:6px;height:6px;border-radius:50%;background:var(--g2);flex-shrink:0}
+.preview-url-text{
+  font-family:'Inter',sans-serif;font-size:11px;
+  font-weight:300;color:var(--g3);letter-spacing:0.03em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.preview-url-text span{color:var(--black);font-weight:500}
+.preview-bar-right{display:flex;gap:6px;align-items:center}
+.dev-btn{
+  background:transparent;border:var(--border);
+  padding:5px 10px;font-size:9px;font-weight:500;
+  letter-spacing:0.1em;cursor:pointer;color:var(--g3);
+  transition:all 0.15s;
+}
+.dev-btn.act{background:var(--black);color:var(--white);border-color:var(--black)}
+.preview-status{
+  font-size:9px;color:var(--g3);
+  letter-spacing:0.1em;padding:0 8px;
+}
+
+.preview-frame-wrap{
+  flex:1;display:flex;
+  align-items:flex-start;justify-content:center;
+  overflow:auto;padding:20px;
+  transition:all 0.3s;
+}
+.preview-frame-wrap.mobile{background:var(--g1)}
+#pframe{
+  width:100%;border:none;
+  background:var(--white);
+  transition:all 0.3s;
+  flex-shrink:0;
+}
+.preview-frame-wrap.mobile #pframe{
+  width:390px;height:844px;
+  border:8px solid var(--black);
+  border-radius:36px;
+  box-shadow:0 24px 80px rgba(0,0,0,0.2);
+}
+
+/* Section tabs in preview bar */
+.sec-tabs-wrap{
+  display:flex;overflow-x:auto;gap:0;
+  flex-shrink:0;border-bottom:var(--border);
+  background:var(--white);
+}
+.sec-tabs-wrap::-webkit-scrollbar{display:none}
+.stab{
+  padding:10px 16px;font-size:9px;font-weight:600;
+  letter-spacing:0.14em;text-transform:uppercase;
+  cursor:pointer;color:var(--g3);
+  border-bottom:2px solid transparent;
+  background:none;border-left:none;border-right:none;border-top:none;
+  white-space:nowrap;transition:all 0.15s;
+}
+.stab:hover{color:var(--black)}
+.stab.act{color:var(--black);border-bottom-color:var(--black)}
+
+/* Deploy overlay */
+.overlay{
+  position:fixed;inset:0;
+  background:rgba(10,10,10,0.94);
+  display:none;align-items:center;justify-content:center;
+  z-index:1000;padding:24px;
+}
+.overlay.show{display:flex}
+.overlay-card{
+  background:var(--white);padding:44px 36px;
+  max-width:420px;width:100%;text-align:center;
+  animation:cardIn 0.3s ease;
+}
+@keyframes cardIn{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+.oc-icon{font-size:28px;margin-bottom:18px}
+.oc-title{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:40px;color:var(--black);
+  letter-spacing:0.04em;margin-bottom:6px;
+}
+.oc-sub{font-size:12px;color:var(--g3);margin-bottom:20px;line-height:1.6}
+.oc-url{
+  background:var(--g1);padding:12px 16px;
+  font-size:11px;color:var(--black);
+  letter-spacing:0.04em;margin:16px 0;
+  word-break:break-all;border:var(--border);
+}
+.oc-btn{
+  display:block;width:100%;background:var(--black);
+  color:var(--white);border:none;padding:14px;
+  font-family:'Inter',sans-serif;font-size:10px;
+  font-weight:600;letter-spacing:0.16em;
+  text-transform:uppercase;cursor:pointer;
+  margin-bottom:8px;text-decoration:none;text-align:center;
+  transition:background 0.2s;
+}
+.oc-btn:hover{background:var(--g4)}
+.oc-btn.sec{background:transparent;color:var(--black);border:var(--border)}
+.oc-btn.sec:hover{border-color:var(--black)}
+
+/* Saving indicator */
+.save-toast{
+  position:fixed;bottom:80px;right:20px;
+  background:var(--black);color:var(--white);
+  font-size:9px;letter-spacing:0.12em;
+  padding:8px 14px;opacity:0;
+  transition:opacity 0.3s;pointer-events:none;
+  z-index:500;
+}
+.save-toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<!-- ═══ LOGIN ═══ -->
+<div class="screen active" id="s-login">
+  <!-- Rings -->
+  <div class="lr" style="width:700px;height:700px;border:0.5px solid rgba(255,255,255,0.04)"></div>
+  <div class="lr" style="width:500px;height:500px;border:0.5px solid rgba(255,255,255,0.05)"></div>
+  <div class="lr" style="width:300px;height:300px;border:0.5px solid rgba(255,255,255,0.07)"></div>
+
+  <div class="l-wordmark">PSC LASH ACADEMY</div>
+
+  <div class="l-logo">
+    <span class="l-logo-main">PSC<br>AGENT</span>
+    <span class="l-logo-sub">Your website. Built for you.</span>
+  </div>
+
+  <div class="l-form">
+    <label class="l-label">Student Access Code</label>
+    <input class="l-input" id="codeInput" type="text" placeholder="PSC180-YOURNAME" autocomplete="off"
+      onkeydown="if(event.key==='Enter')doLogin()" oninput="this.value=this.value.toUpperCase()">
+    <button class="l-btn" onclick="doLogin()">Access My Dashboard →</button>
+    <div class="l-err" id="loginErr"></div>
+  </div>
+
+  <div class="l-footer">EXCLUSIVE TO 180° PROGRAMME STUDENTS · PSCSITES.COM</div>
+</div>
+
+<!-- ═══ MAIN APP ═══ -->
+<div class="screen" id="s-app">
+
+  <!-- CHAT PANEL -->
+  <div class="chat-panel">
+    <div class="chat-topbar">
+      <div class="agent-info">
+        <div class="agent-avatar"><span>PSC</span></div>
+        <div>
+          <div class="agent-name">PSC AGENT</div>
+          <div class="agent-status"><div class="status-dot"></div>Ready to build</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="tbar-btn" onclick="newWebsite()" title="Start over">New Site</button>
+        <button class="tbar-btn deploy" onclick="showDeploy()">Deploy →</button>
+      </div>
+    </div>
+
+    <div class="chat-msgs" id="chatMsgs"></div>
+
+    <!-- Quick chips -->
+    <div class="quick-chips" id="quickChips">
+      <div class="chip" onclick="sendChip('Change my hero headline')">Edit headline</div>
+      <div class="chip" onclick="sendChip('Make it more luxurious')">More luxury</div>
+      <div class="chip" onclick="sendChip('Add my services section')">Add services</div>
+      <div class="chip" onclick="sendChip('Change the about section')">Edit about</div>
+      <div class="chip" onclick="sendChip('Make it bolder and more editorial')">More editorial</div>
+      <div class="chip" onclick="sendChip('Update my booking section')">Edit booking</div>
+    </div>
+
+    <!-- Input -->
+    <div class="chat-input-area">
+      <div class="chat-input-wrap" id="inputWrap">
+        <div class="upload-thumbs" id="uploadThumbs"></div>
+        <textarea class="chat-ta" id="chatTa"
+          placeholder="Tell PSC Agent what you want to build or change..."
+          onkeydown="handleKey(event)"
+          oninput="autoResize(this)"></textarea>
+        <div class="input-actions">
+          <label class="attach-btn">
+            <input type="file" accept="image/*" multiple id="imgUpload" onchange="handleImgUpload(event)">
+            ⊕ Add photos or inspiration
+          </label>
+          <button class="send-btn" id="sendBtn" onclick="sendMsg()">Send →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PREVIEW PANEL -->
+  <div class="preview-panel">
+    <div class="preview-bar">
+      <div class="preview-url-wrap">
+        <div class="url-dot"></div>
+        <div class="preview-url-text" id="previewUrl">
+          <span id="urlSlug">yoursite</span>.pscsites.com
+        </div>
+      </div>
+      <div class="preview-bar-right">
+        <div class="preview-status" id="previewStatus">Ready</div>
+        <button class="dev-btn act" onclick="setDev('desktop',this)">Desktop</button>
+        <button class="dev-btn" onclick="setDev('mobile',this)">Mobile</button>
+      </div>
+    </div>
+
+    <div class="sec-tabs-wrap" id="secTabs">
+      <button class="stab act" data-sec="hero" onclick="scrollToSec(this)">Hero</button>
+      <button class="stab" data-sec="about" onclick="scrollToSec(this)">About</button>
+      <button class="stab" data-sec="services" onclick="scrollToSec(this)">Services</button>
+      <button class="stab" data-sec="gallery" onclick="scrollToSec(this)">Gallery</button>
+      <button class="stab" data-sec="booking" onclick="scrollToSec(this)">Booking</button>
+      <button class="stab" data-sec="contact" onclick="scrollToSec(this)">Contact</button>
+    </div>
+
+    <div class="preview-frame-wrap" id="pfWrap">
+      <iframe id="pframe" sandbox="allow-same-origin allow-scripts"></iframe>
+    </div>
+  </div>
+</div>
+
+<!-- Deploy overlay -->
+<div class="overlay" id="deployOverlay">
+  <div class="overlay-card">
+    <div class="oc-icon" id="ocIcon">→</div>
+    <div class="oc-title" id="ocTitle">DEPLOY YOUR SITE</div>
+    <p class="oc-sub" id="ocSub">Your website will go live at the address below. You can update it any time.</p>
+    <div class="oc-url" id="ocUrl">yoursite.pscsites.com</div>
+    <button class="oc-btn" id="ocMainBtn" onclick="confirmDeploy()">Make It Live →</button>
+    <button class="oc-btn sec" onclick="closeOverlay()">Back to Builder</button>
+  </div>
+</div>
+
+<!-- Save toast -->
+<div class="save-toast" id="saveToast">Saved</div>
+
+<script>
+// ═══════════════════════════════════════
+// CONFIG — Replace these in production
+// ═══════════════════════════════════════
+const ANTHROPIC_KEY = 'YOUR_ANTHROPIC_KEY_HERE';
+const SUPABASE_URL  = 'YOUR_SUPABASE_URL_HERE';
+const SUPABASE_KEY  = 'YOUR_SUPABASE_ANON_KEY_HERE';
+
+// Valid access codes — in production load these from Supabase
+// Format: CODE -> student name
+const VALID_CODES = {
+  'PSC180-DEMO': 'Demo Student',
+  // Add more as needed — or load from Supabase
+};
+
+// ═══════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════
+let studentCode = '';
+let studentName = '';
+let siteData = {
+  bizName:'', name:'', location:'', positioning:'',
+  services:[], instagram:'', bookingLink:'',
+  template:'editorial', photos:[]
+};
+let generatedSections = {};
+let conversationHistory = [];
+let pendingImages = []; // base64 images queued to send
+let isBuilding = false;
+const SECTIONS = ['hero','about','services','gallery','booking','contact'];
+
+// ═══════════════════════════════════════
+// LOGIN
+// ═══════════════════════════════════════
+function doLogin() {
+  const code = document.getElementById('codeInput').value.trim().toUpperCase();
+  const err = document.getElementById('loginErr');
+  const inp = document.getElementById('codeInput');
+
+  // Check code
+  const validName = VALID_CODES[code];
+  // Also accept any PSC180-XXXX pattern as valid for flexibility
+  const isValid = validName || /^PSC180-[A-Z]{2,}$/.test(code);
+
+  if (isValid) {
+    studentCode = code;
+    studentName = validName || code.replace('PSC180-','');
+    localStorage.setItem('psc_code', code);
+    localStorage.setItem('psc_name', studentName);
+    initApp();
+  } else {
+    inp.classList.add('err');
+    err.textContent = 'Access code not recognised. Check your 180° Programme welcome email.';
+    setTimeout(() => inp.classList.remove('err'), 400);
+  }
+}
+
+// Check existing session
+(function checkSession() {
+  const saved = localStorage.getItem('psc_code');
+  if (saved) {
+    studentCode = saved;
+    studentName = localStorage.getItem('psc_name') || saved.replace('PSC180-','');
+    const savedSite = localStorage.getItem('psc_site_' + saved);
+    if (savedSite) {
+      const parsed = JSON.parse(savedSite);
+      siteData = parsed.siteData || siteData;
+      generatedSections = parsed.sections || {};
+      conversationHistory = parsed.history || [];
+    }
+    initApp();
+  }
+})();
+
+// ═══════════════════════════════════════
+// APP INIT
+// ═══════════════════════════════════════
+function initApp() {
+  document.getElementById('s-login').classList.remove('active');
+  document.getElementById('s-app').classList.add('active');
+
+  // Update URL slug
+  updateUrlSlug();
+
+  // Set iframe height
+  const pframe = document.getElementById('pframe');
+  pframe.style.height = (window.innerHeight - 84) + 'px';
+
+  if (Object.keys(generatedSections).length > 0) {
+    // Returning student — restore their site
+    updatePreview();
+    restoreChat();
+  } else {
+    // New student — start the conversation
+    startWelcome();
+  }
+}
+
+function updateUrlSlug() {
+  const slug = (siteData.bizName || studentName || 'yoursite')
+    .toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+  document.getElementById('urlSlug').textContent = slug || 'yoursite';
+  document.getElementById('ocUrl').textContent = (slug || 'yoursite') + '.pscsites.com';
+}
+
+// ═══════════════════════════════════════
+// CHAT SYSTEM
+// ═══════════════════════════════════════
+function addMsg(role, content, animate=true) {
+  const wrap = document.getElementById('chatMsgs');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  if (!animate) div.style.animation = 'none';
+
+  const initials = role === 'agent' ? 'PSC' : studentName.charAt(0).toUpperCase() || 'ME';
+  div.innerHTML = `
+    <div class="msg-avatar"><span>${initials}</span></div>
+    <div class="msg-bubble">${formatMsg(content)}</div>`;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+  return div;
+}
+
+function formatMsg(text) {
+  return text
+    .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\n/g,'<br>');
+}
+
+function showTyping() {
+  const wrap = document.getElementById('chatMsgs');
+  const div = document.createElement('div');
+  div.className = 'msg agent';
+  div.id = 'typingIndicator';
+  div.innerHTML = `
+    <div class="msg-avatar"><span>PSC</span></div>
+    <div class="msg-bubble">
+      <div class="typing-indicator">
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+      </div>
+    </div>`;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function removeTyping() {
+  const t = document.getElementById('typingIndicator');
+  if (t) t.remove();
+}
+
+function startWelcome() {
+  setTimeout(() => {
+    addMsg('agent',
+      `Welcome to PSC Agent, **${studentName}**.\n\nI am going to build your lash business website — right now, in front of you.\n\nTo start, tell me: **what is your business name?**`
+    );
+  }, 400);
+}
+
+function restoreChat() {
+  // Show last few messages
+  const recent = conversationHistory.slice(-6);
+  recent.forEach(m => {
+    addMsg(m.role === 'user' ? 'user' : 'agent', m.content, false);
+  });
+  addMsg('agent', `Welcome back, **${studentName}**. Your website is loaded. What would you like to change?`, true);
+}
+
+// ═══════════════════════════════════════
+// SEND MESSAGE
+// ═══════════════════════════════════════
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMsg();
+  }
+}
+
+async function sendMsg() {
+  const ta = document.getElementById('chatTa');
+  const text = ta.value.trim();
+  if (!text && pendingImages.length === 0) return;
+  if (isBuilding) return;
+
+  const msgText = text || '(shared images)';
+  addMsg('user', msgText);
+  ta.value = '';
+  autoResize(ta);
+  clearUploadThumbs();
+
+  // Add to history
+  conversationHistory.push({ role:'user', content: msgText });
+
+  isBuilding = true;
+  document.getElementById('sendBtn').disabled = true;
+  showTyping();
+  setStatus('PSC Agent is thinking...');
+
+  try {
+    const response = await callAgent(msgText, pendingImages);
+    pendingImages = [];
+    removeTyping();
+    addMsg('agent', response.message);
+    conversationHistory.push({ role:'assistant', content: response.message });
+
+    // If sections were generated, update preview
+    if (response.sections && Object.keys(response.sections).length > 0) {
+      Object.assign(generatedSections, response.sections);
+      updatePreview();
+      setStatus('Updated ✓');
+      setTimeout(() => setStatus('Ready'), 2000);
+    }
+
+    // Update site data if extracted
+    if (response.siteData) {
+      Object.assign(siteData, response.siteData);
+      updateUrlSlug();
+    }
+
+    saveState();
+  } catch(e) {
+    removeTyping();
+    addMsg('agent', 'Something went wrong on my end. Try again — or rephrase what you want changed.');
+    setStatus('Error — try again');
+  }
+
+  isBuilding = false;
+  document.getElementById('sendBtn').disabled = false;
+}
+
+function sendChip(text) {
+  document.getElementById('chatTa').value = text;
+  sendMsg();
+}
+
+// ═══════════════════════════════════════
+// PSC AGENT — CLAUDE API CALL
+// ═══════════════════════════════════════
+async function callAgent(userMessage, images=[]) {
+  const systemPrompt = buildSystemPrompt();
+
+  // Build messages array with history
+  const messages = [];
+
+  // Add conversation history (last 12 turns to stay within context)
+  const hist = conversationHistory.slice(-12);
+  hist.forEach(m => {
+    messages.push({ role: m.role === 'agent' ? 'assistant' : 'user', content: m.content });
+  });
+
+  // Add current message with any images
+  if (images.length > 0) {
+    const content = [
+      { type:'text', text: userMessage || 'Please use these images for my website.' },
+      ...images.map(img => ({
+        type:'image',
+        source:{ type:'base64', media_type: img.type, data: img.data }
+      }))
+    ];
+    messages.push({ role:'user', content });
+  } else {
+    messages.push({ role:'user', content: userMessage });
+  }
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'x-api-key': ANTHROPIC_KEY,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true',
+    },
+    body: JSON.stringify({
+      model:'claude-sonnet-4-20250514',
+      max_tokens:8096,
+      system: systemPrompt,
+      messages,
+    })
+  });
+
+  const data = await res.json();
+  const raw = data.content?.[0]?.text || '';
+
+  return parseAgentResponse(raw);
+}
+
+function buildSystemPrompt() {
+  return `You are PSC Agent — the AI website builder for PSC Lash Academy's 180 Degree Programme. You build beautiful, premium lash business websites through conversation.
+
+STUDENT INFO:
+Name: ${studentName}
+Code: ${studentCode}
+Current site data: ${JSON.stringify(siteData)}
+Sections already built: ${Object.keys(generatedSections).join(', ') || 'none yet'}
+
+YOUR PERSONALITY:
+- You are warm, direct, and expert
+- You sound like a knowledgeable PSC team member
+- Never mention Claude, AI, Vercel, or any technical tool
+- Refer to yourself only as "PSC Agent"
+- Keep messages concise — no waffle
+- When you build something, acknowledge it briefly and ask what they want next
+
+YOUR JOB:
+1. Collect their business information through natural conversation
+2. Build and update their website sections based on what they tell you
+3. When they share inspiration images, analyse and incorporate the aesthetic
+4. When they request changes, regenerate the relevant section
+
+WEBSITE DESIGN RULES — follow these strictly for all generated HTML:
+- Background: #FFFFFF white only (except contact/footer which uses #0A0A0A)
+- Text: #0A0A0A black only
+- NO colour accents — pure black and white
+- Fonts: Bebas Neue (all headings), Inter 300/400/500 (body), DM Serif Display italic (elegant moments)
+- Always include Google Fonts link: https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Serif+Display:ital@0;1&family=Inter:wght@200;300;400;500;600&display=swap
+- Borders: 1px solid #E0DFDC
+- Generous white space — sections need minimum 80px padding top/bottom
+- Mobile responsive — all sections must work on 390px width
+- Thin circle arc decorative elements using SVG (like PSC's brand)
+- Editorial, premium feel — like a luxury brand website
+- Sections must have id attributes: hero, about, services, gallery, booking, contact
+
+SECTION TEMPLATES:
+
+HERO: Full viewport height. Large business name in Bebas Neue. Positioning statement in DM Serif italic. CTA button. Thin decorative circle arc. Optional hero image placeholder.
+
+ABOUT: Business name owner name. Personal bio from positioning statement. Elegant layout. Optional profile photo slot.
+
+SERVICES: Clean list or grid. Each service with name and price. Bold Bebas Neue pricing. Thin divider lines.
+
+GALLERY: 6-slot grid. Clean equal squares. Caption underneath if needed.
+
+BOOKING: Embed their booking link in an iframe. If no link yet, large CTA button. Clean centered layout.
+
+CONTACT/FOOTER: Dark background (#0A0A0A). White text. Business name, location, Instagram handle. Copyright.
+
+RESPONSE FORMAT:
+Always respond with valid JSON wrapped in <response> tags:
+
+<response>
+{
+  "message": "Your conversational response to the student here",
+  "siteData": {
+    "bizName": "extracted business name if mentioned",
+    "name": "extracted owner name if mentioned",
+    "location": "extracted location if mentioned",
+    "positioning": "extracted positioning if mentioned",
+    "services": [],
+    "instagram": "extracted handle if mentioned",
+    "bookingLink": "extracted link if mentioned"
+  },
+  "sections": {
+    "hero": "complete HTML for hero section if building/updating it",
+    "about": "complete HTML for about section if building/updating it",
+    "services": "complete HTML for services section if building/updating it",
+    "gallery": "complete HTML for gallery section if building/updating it",
+    "booking": "complete HTML for booking section if building/updating it",
+    "contact": "complete HTML for contact section if building/updating it"
+  }
+}
+</response>
+
+Only include sections in the response that you are actually generating or updating.
+Only include siteData fields that were mentioned in the current message.
+The message field should be friendly, brief, and move the conversation forward.
+
+When a student first tells you their business name, immediately generate a complete hero section for them as a first impression — do not wait for all information.
+
+When you have enough information for a section, build it. Do not ask permission to build.`;
+}
+
+function parseAgentResponse(raw) {
+  try {
+    const match = raw.match(/<response>([\s\S]*?)<\/response>/);
+    if (match) {
+      const parsed = JSON.parse(match[1].trim());
+      // Clean siteData — only keep non-empty values
+      if (parsed.siteData) {
+        Object.keys(parsed.siteData).forEach(k => {
+          if (!parsed.siteData[k] || (Array.isArray(parsed.siteData[k]) && parsed.siteData[k].length === 0)) {
+            delete parsed.siteData[k];
+          }
+        });
+      }
+      return parsed;
+    }
+  } catch(e) {}
+  // Fallback — treat whole response as message
+  return { message: raw.replace(/<[^>]+>/g,'').trim(), sections:{}, siteData:{} };
+}
+
+// ═══════════════════════════════════════
+// PREVIEW
+// ═══════════════════════════════════════
+function updatePreview() {
+  const sections = SECTIONS.map(s => generatedSections[s] || '').join('\n');
+  const html = `<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Serif+Display:ital@0;1&family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;font-weight:300;}</style>
+</head><body>${sections}</body></html>`;
+
+  const frame = document.getElementById('pframe');
+  const blob = new Blob([html], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  frame.src = url;
+}
+
+function setStatus(txt) {
+  document.getElementById('previewStatus').textContent = txt;
+}
+
+function setDev(mode, btn) {
+  document.querySelectorAll('.dev-btn').forEach(b => b.classList.remove('act'));
+  btn.classList.add('act');
+  const wrap = document.getElementById('pfWrap');
+  const frame = document.getElementById('pframe');
+  if (mode === 'mobile') {
+    wrap.classList.add('mobile');
+    frame.style.width = '390px';
+    frame.style.height = '844px';
+  } else {
+    wrap.classList.remove('mobile');
+    frame.style.width = '100%';
+    frame.style.height = (window.innerHeight - 84) + 'px';
+  }
+}
+
+function scrollToSec(btn) {
+  document.querySelectorAll('.stab').forEach(t => t.classList.remove('act'));
+  btn.classList.add('act');
+  const sec = btn.dataset.sec;
+  const frame = document.getElementById('pframe');
+  try {
+    frame.contentWindow.document.getElementById(sec)?.scrollIntoView({behavior:'smooth'});
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════
+// IMAGE UPLOADS
+// ═══════════════════════════════════════
+function handleImgUpload(e) {
+  const files = Array.from(e.target.files).slice(0, 6);
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const base64 = ev.target.result.split(',')[1];
+      const type = file.type;
+      pendingImages.push({ data: base64, type });
+      addThumb(ev.target.result);
+    };
+    reader.readAsDataURL(file);
+  });
+  e.target.value = '';
+}
+
+function addThumb(src) {
+  const thumbs = document.getElementById('uploadThumbs');
+  const wrap = document.createElement('div');
+  wrap.style.position = 'relative';
+  const img = document.createElement('img');
+  img.src = src;
+  img.className = 'upload-thumb';
+  const rm = document.createElement('div');
+  rm.className = 'thumb-remove';
+  rm.textContent = '×';
+  rm.onclick = () => {
+    const idx = Array.from(thumbs.children).indexOf(wrap);
+    pendingImages.splice(idx, 1);
+    wrap.remove();
+  };
+  wrap.appendChild(img);
+  wrap.appendChild(rm);
+  thumbs.appendChild(wrap);
+}
+
+function clearUploadThumbs() {
+  document.getElementById('uploadThumbs').innerHTML = '';
+}
+
+// ═══════════════════════════════════════
+// DEPLOY
+// ═══════════════════════════════════════
+function showDeploy() {
+  if (Object.keys(generatedSections).length === 0) {
+    addMsg('agent', 'Your website is not ready yet — tell me about your business and I will build it for you first.');
+    return;
+  }
+  updateUrlSlug();
+  document.getElementById('deployOverlay').classList.add('show');
+}
+
+function closeOverlay() {
+  document.getElementById('deployOverlay').classList.remove('show');
+}
+
+function confirmDeploy() {
+  const btn = document.getElementById('ocMainBtn');
+  btn.textContent = 'Deploying...';
+  btn.disabled = true;
+  document.getElementById('ocIcon').textContent = '◌';
+  document.getElementById('ocTitle').textContent = 'GOING LIVE';
+  document.getElementById('ocSub').textContent = 'PSC Agent is deploying your website now...';
+
+  // In production: call /api/deploy.js here
+  // For now simulate
+  setTimeout(() => {
+    const slug = document.getElementById('urlSlug').textContent;
+    const url = `https://${slug}.pscsites.com`;
+    document.getElementById('ocIcon').textContent = '✦';
+    document.getElementById('ocTitle').textContent = 'YOUR SITE IS LIVE';
+    document.getElementById('ocSub').textContent = 'Your website is now live. Share it with the world.';
+    document.getElementById('ocUrl').textContent = url;
+    btn.textContent = 'Open My Website →';
+    btn.disabled = false;
+    btn.onclick = () => window.open(url, '_blank');
+    // Tell the agent
+    addMsg('agent', `**Your website is live!** 🎉\n\nYou can find it at: ${url}\n\nShare it on your Instagram bio and start directing clients there. Want to make any final changes?`);
+    conversationHistory.push({role:'assistant', content:`Your website is live at ${url}`});
+    saveState();
+  }, 3000);
+}
+
+// ═══════════════════════════════════════
+// SAVE / LOAD (Supabase + localStorage)
+// ═══════════════════════════════════════
+function saveState() {
+  const payload = {
+    siteData,
+    sections: generatedSections,
+    history: conversationHistory.slice(-30), // keep last 30 turns
+    updatedAt: new Date().toISOString(),
+  };
+  localStorage.setItem('psc_site_' + studentCode, JSON.stringify(payload));
+
+  // Show save toast
+  const toast = document.getElementById('saveToast');
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 1500);
+
+  // Optionally sync to Supabase
+  if (SUPABASE_URL && SUPABASE_URL !== 'YOUR_SUPABASE_URL_HERE') {
+    syncToSupabase(payload);
+  }
+}
+
+async function syncToSupabase(payload) {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/student_sites`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Prefer':'resolution=merge-duplicates',
+      },
+      body: JSON.stringify({
+        student_code: studentCode,
+        student_name: studentName,
+        site_data: JSON.stringify(payload),
+        updated_at: new Date().toISOString(),
+      })
+    });
+  } catch(e) {
+    // Silent fail — localStorage is the backup
+  }
+}
+
+// ═══════════════════════════════════════
+// UTILITY
+// ═══════════════════════════════════════
+function autoResize(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
+}
+
+function newWebsite() {
+  if (!confirm('Start a new website? Your current site will be saved and you can return to it.')) return;
+  generatedSections = {};
+  siteData = { bizName:'',name:'',location:'',positioning:'',services:[],instagram:'',bookingLink:'',template:'editorial',photos:[] };
+  conversationHistory = [];
+  document.getElementById('chatMsgs').innerHTML = '';
+  updatePreview();
+  updateUrlSlug();
+  startWelcome();
+}
+</script>
+</body>
+</html>
