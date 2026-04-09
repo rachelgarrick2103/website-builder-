@@ -104,10 +104,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       fallbackProject.assets = [fallbackAsset, ...fallbackProject.assets];
       fallbackProject.updatedAt = new Date();
       await saveFallbackProject(user, fallbackProject);
-      return NextResponse.json({ asset: fallbackAsset }, { status: 201 });
+      return NextResponse.json({ asset: fallbackAsset, usingFallback: true }, { status: 201 });
     }
 
-    return NextResponse.json({ asset }, { status: 201 });
+    return NextResponse.json({ asset, usingFallback: false }, { status: 201 });
   } catch (error) {
     console.error("asset upload error", error);
     return jsonError("Upload failed. Please try again.", 500);

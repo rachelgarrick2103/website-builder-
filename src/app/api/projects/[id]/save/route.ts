@@ -39,7 +39,7 @@ export async function POST(
       fallbackProject.updatedAt = new Date();
       fallbackProject.hasUnpublishedChanges = fallbackProject.status === ProjectStatus.LIVE;
       await saveFallbackProject(user, fallbackProject);
-      return NextResponse.json({ ok: true, message: "Saving your project" });
+      return NextResponse.json({ ok: true, message: "Saving your project", usingFallback: true });
     }
 
     const { error } = await withSupabaseTimeout(
@@ -58,7 +58,7 @@ export async function POST(
     );
     if (error) throw error;
 
-    return NextResponse.json({ ok: true, message: "Saving your project" });
+    return NextResponse.json({ ok: true, message: "Saving your project", usingFallback: false });
   } catch (error) {
     const fallbackProject = await getFallbackProject(user, id);
     if (!fallbackProject) {
@@ -72,6 +72,6 @@ export async function POST(
     fallbackProject.updatedAt = new Date();
     fallbackProject.hasUnpublishedChanges = fallbackProject.status === ProjectStatus.LIVE;
     await saveFallbackProject(user, fallbackProject);
-    return NextResponse.json({ ok: true, message: "Saving your project" });
+    return NextResponse.json({ ok: true, message: "Saving your project", usingFallback: true });
   }
 }

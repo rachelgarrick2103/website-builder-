@@ -84,8 +84,8 @@ export default async function DashboardPage() {
       </header>
 
       {dbUnavailable ? (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Database is temporarily unavailable. You are viewing your temporary session projects.
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+          Saving locally — your work is safe and will sync when connection restores.
         </div>
       ) : null}
 

@@ -33,7 +33,11 @@ export default async function ProjectPage({ params }: { params: Params }) {
     );
     return (
       <main>
-        <ProjectBuilder initialProject={fallbackProject} initialPreviewDoc={initialPreviewDoc} />
+        <ProjectBuilder
+          initialProject={fallbackProject}
+          initialPreviewDoc={initialPreviewDoc}
+          initialUsingFallback
+        />
       </main>
     );
   }

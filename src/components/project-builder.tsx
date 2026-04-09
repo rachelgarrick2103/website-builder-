@@ -36,6 +36,7 @@ type BuilderProject = {
 type Props = {
   initialProject: BuilderProject;
   initialPreviewDoc: string;
+  initialUsingFallback?: boolean;
 };
 
 type DeviceMode = "desktop" | "mobile";
@@ -98,7 +99,7 @@ function statusCopy(status: ProjectStatus, hasUnpublished: boolean) {
   return "Draft";
 }
 
-export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
+export function ProjectBuilder({ initialProject, initialPreviewDoc, initialUsingFallback = false }: Props) {
   const [project, setProject] = useState<BuilderProject>(initialProject);
   const [messages, setMessages] = useState<Message[]>(initialProject.messages);
   const [input, setInput] = useState("");
@@ -111,6 +112,7 @@ export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
   const [statusText, setStatusText] = useState(statusCopy(initialProject.status, initialProject.hasUnpublishedChanges));
   const [dirty, setDirty] = useState(false);
   const [autosaveStatus, setAutosaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [showFallbackBanner, setShowFallbackBanner] = useState(initialUsingFallback);
 
   useEffect(() => {
     const serialized = JSON.stringify(project);
@@ -151,10 +153,13 @@ export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
           structuredData: project.structuredData,
         }),
       });
-      const data = (await res.json()) as { error?: string };
+      const data = (await res.json()) as { error?: string; usingFallback?: boolean };
       if (!res.ok) {
         if (showErrors) setError(data.error ?? "Unable to save right now.");
         return false;
+      }
+      if (data.usingFallback) {
+        setShowFallbackBanner(true);
       }
       return true;
     } catch {
@@ -196,6 +201,7 @@ export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
         error?: string;
         project?: BuilderProject;
         previewDoc?: string | null;
+        usingFallback?: boolean;
       };
 
       if (!res.ok || !data.project) {
@@ -205,6 +211,9 @@ export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
 
       if (data.previewDoc) {
         setPreviewDoc(data.previewDoc);
+      }
+      if (data.usingFallback) {
+        setShowFallbackBanner(true);
       }
       setProject(data.project);
       setMessages(data.project.messages);
@@ -286,12 +295,16 @@ export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
       const data = (await res.json()) as {
         error?: string;
         project?: BuilderProject;
+        usingFallback?: boolean;
       };
 
       if (!res.ok || !data.project) {
         setError(data.error ?? "Publishing failed. Please try again.");
         setProject((prev) => ({ ...prev, status: previousStatus }));
         return;
+      }
+      if (data.usingFallback) {
+        setShowFallbackBanner(true);
       }
       setProject(data.project);
       setDirty(false);
@@ -315,10 +328,14 @@ export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
       const data = (await res.json()) as {
         error?: string;
         asset?: Asset;
+        usingFallback?: boolean;
       };
       if (!res.ok || !data.asset) {
         setError(data.error ?? "Upload failed.");
         return;
+      }
+      if (data.usingFallback) {
+        setShowFallbackBanner(true);
       }
       setProject((prev) => ({
         ...prev,
@@ -362,6 +379,12 @@ export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
           </button>
         </div>
       </header>
+
+      {showFallbackBanner ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+          Saving locally — your work is safe and will sync when connection restores.
+        </div>
+      ) : null}
 
       <section className="grid gap-5 lg:grid-cols-2">
         <div className="panel flex h-[820px] flex-col">

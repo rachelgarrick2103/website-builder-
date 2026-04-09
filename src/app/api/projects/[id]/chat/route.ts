@@ -152,16 +152,20 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   const assetUrls = fallbackProject?.assets.map((asset) => asset.fileUrl) ?? [];
   if (project) {
-    const projectAssetsResult = await withSupabaseTimeout(
-      supabase.from("Asset").select("fileUrl").eq("projectId", project.id),
-    );
-    if (!projectAssetsResult.error) {
-      const dbAssetUrls = ((projectAssetsResult.data ?? []) as Array<{ fileUrl?: string }>)
-        .map((asset) => asset.fileUrl)
-        .filter((value): value is string => typeof value === "string");
-      if (dbAssetUrls.length) {
-        assetUrls.splice(0, assetUrls.length, ...dbAssetUrls);
+    try {
+      const projectAssetsResult = await withSupabaseTimeout(
+        supabase.from("Asset").select("fileUrl").eq("projectId", project.id),
+      );
+      if (!projectAssetsResult.error) {
+        const dbAssetUrls = ((projectAssetsResult.data ?? []) as Array<{ fileUrl?: string }>)
+          .map((asset) => asset.fileUrl)
+          .filter((value): value is string => typeof value === "string");
+        if (dbAssetUrls.length) {
+          assetUrls.splice(0, assetUrls.length, ...dbAssetUrls);
+        }
       }
+    } catch {
+      // Keep fallback asset URLs if the db call times out.
     }
   }
 
@@ -195,60 +199,97 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   if (project && !usingFallback) {
-    const updateProjectResult = await withSupabaseTimeout(
-      supabase
-        .from("Project")
-        .update({
+    try {
+      const updateProjectResult = await withSupabaseTimeout(
+        supabase
+          .from("Project")
+          .update({
+            currentCodeHtml: generated.html,
+            currentCodeCss: generated.css,
+            currentCodeJs: generated.js,
+            structuredData: generated.structuredData,
+            hasUnpublishedChanges: project.status === "LIVE",
+            updatedAt: new Date().toISOString(),
+          })
+          .eq("id", project.id)
+          .eq("userId", user.id),
+      );
+      if (updateProjectResult.error) throw updateProjectResult.error;
+
+      const assistantMessageResult = await withSupabaseTimeout(
+        supabase.from("Message").insert({
+          id: randomUUID(),
+          projectId: project.id,
+          role: MessageRole.ASSISTANT,
+          content: generated.assistantReply,
+        }),
+      );
+      if (assistantMessageResult.error) throw assistantMessageResult.error;
+
+      const reloadedProjectResult = await withSupabaseTimeout(
+        supabase
+          .from("Project")
+          .select("*")
+          .eq("id", project.id)
+          .eq("userId", user.id)
+          .single(),
+      );
+      if (reloadedProjectResult.error) throw reloadedProjectResult.error;
+
+      const [messagesResult, assetsResult] = await Promise.all([
+        withSupabaseTimeout(
+          supabase.from("Message").select("*").eq("projectId", project.id).order("createdAt", { ascending: true }),
+        ),
+        withSupabaseTimeout(
+          supabase.from("Asset").select("*").eq("projectId", project.id).order("createdAt", { ascending: false }),
+        ),
+      ]);
+      if (messagesResult.error) throw messagesResult.error;
+      if (assetsResult.error) throw assetsResult.error;
+
+      updatedProject = {
+        ...reloadedProjectResult.data,
+        messages: messagesResult.data ?? [],
+        assets: assetsResult.data ?? [],
+        versions: [],
+      };
+    } catch (error) {
+      if (!isSupabaseUnavailableError(error)) {
+        throw error;
+      }
+      usingFallback = true;
+      fallbackProject = fallbackProject ?? (await getFallbackProject(user, id));
+      if (!fallbackProject) {
+        updatedProject = {
+          ...project,
           currentCodeHtml: generated.html,
           currentCodeCss: generated.css,
           currentCodeJs: generated.js,
           structuredData: generated.structuredData,
           hasUnpublishedChanges: project.status === "LIVE",
           updatedAt: new Date().toISOString(),
-        })
-        .eq("id", project.id)
-        .eq("userId", user.id),
-    );
-    if (updateProjectResult.error) throw updateProjectResult.error;
+          messages: [
+            {
+              id: randomUUID(),
+              role: MessageRole.USER,
+              content: parsed.data.message,
+              createdAt: new Date().toISOString(),
+            },
+            {
+              id: randomUUID(),
+              role: MessageRole.ASSISTANT,
+              content: generated.assistantReply,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          assets: [],
+          versions: [],
+        };
+      }
+    }
+  }
 
-    const assistantMessageResult = await withSupabaseTimeout(
-      supabase.from("Message").insert({
-        id: randomUUID(),
-        projectId: project.id,
-        role: MessageRole.ASSISTANT,
-        content: generated.assistantReply,
-      }),
-    );
-    if (assistantMessageResult.error) throw assistantMessageResult.error;
-
-    const reloadedProjectResult = await withSupabaseTimeout(
-      supabase
-        .from("Project")
-        .select("*")
-        .eq("id", project.id)
-        .eq("userId", user.id)
-        .single(),
-    );
-    if (reloadedProjectResult.error) throw reloadedProjectResult.error;
-
-    const [messagesResult, assetsResult] = await Promise.all([
-      withSupabaseTimeout(
-        supabase.from("Message").select("*").eq("projectId", project.id).order("createdAt", { ascending: true }),
-      ),
-      withSupabaseTimeout(
-        supabase.from("Asset").select("*").eq("projectId", project.id).order("createdAt", { ascending: false }),
-      ),
-    ]);
-    if (messagesResult.error) throw messagesResult.error;
-    if (assetsResult.error) throw assetsResult.error;
-
-    updatedProject = {
-      ...reloadedProjectResult.data,
-      messages: messagesResult.data ?? [],
-      assets: assetsResult.data ?? [],
-      versions: [],
-    };
-  } else if (fallbackProject) {
+  if (fallbackProject && !updatedProject) {
     fallbackProject.currentCodeHtml = generated.html;
     fallbackProject.currentCodeCss = generated.css;
     fallbackProject.currentCodeJs = generated.js;
@@ -269,5 +310,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     project: updatedProject,
     sections: generated.sections ?? {},
     previewDoc,
+    usingFallback: usingFallback || Boolean(fallbackProject),
   });
 }

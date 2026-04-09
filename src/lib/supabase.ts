@@ -1,12 +1,57 @@
 import { createClient } from "@supabase/supabase-js";
 
-export const hasSupabaseConfig = Boolean(
-  process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY,
-);
+const REQUIRED_DATABASE_PARAMS: Record<string, string> = {
+  sslmode: "require",
+  connection_limit: "1",
+  pool_timeout: "20",
+};
+
+function normalizeDatabaseUrl(url?: string) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    Object.entries(REQUIRED_DATABASE_PARAMS).forEach(([key, value]) => {
+      parsed.searchParams.set(key, value);
+    });
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+function deriveSupabaseUrlFromDatabaseUrl(url?: string) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname;
+    const refMatch = host.match(/^db\.([a-z0-9-]+)\.supabase\.co$/i);
+    if (!refMatch) return null;
+    return `https://${refMatch[1]}.supabase.co`;
+  } catch {
+    return null;
+  }
+}
+
+export const normalizedDatabaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL);
+
+if (normalizedDatabaseUrl) {
+  process.env.DATABASE_URL = normalizedDatabaseUrl;
+}
+
+const resolvedSupabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ??
+  process.env.SUPABASE_URL ??
+  deriveSupabaseUrlFromDatabaseUrl(normalizedDatabaseUrl ?? process.env.DATABASE_URL) ??
+  null;
+
+const resolvedSupabaseServiceKey =
+  process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? null;
+
+export const hasSupabaseConfig = Boolean(resolvedSupabaseUrl && resolvedSupabaseServiceKey);
 
 export const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://invalid-supabase-url.local",
-  process.env.SUPABASE_SERVICE_KEY ?? "invalid-service-role-key",
+  resolvedSupabaseUrl ?? "https://invalid-supabase-url.local",
+  resolvedSupabaseServiceKey ?? "invalid-service-role-key",
 );
 
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -65,3 +110,15 @@ export function isSupabaseError(error: unknown): boolean {
 }
 
 export const isSupabaseUnavailableError = isSupabaseError;
+
+export function hasRequiredDatabaseParams(url?: string | null) {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return Object.entries(REQUIRED_DATABASE_PARAMS).every(
+      ([key, value]) => parsed.searchParams.get(key) === value,
+    );
+  } catch {
+    return false;
+  }
+}

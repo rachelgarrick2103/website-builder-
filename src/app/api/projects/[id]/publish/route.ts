@@ -65,7 +65,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     );
     if (messageError) throw messageError;
 
-    return NextResponse.json({ project: updated });
+    return NextResponse.json({ project: updated, usingFallback: false });
   } catch (error) {
     if (!isSupabaseUnavailableError(error)) {
       console.error("publish error", error);
@@ -90,6 +90,6 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     });
     project.updatedAt = new Date();
     await saveFallbackProject(user, project);
-    return NextResponse.json({ project });
+    return NextResponse.json({ project, usingFallback: true });
   }
 }
