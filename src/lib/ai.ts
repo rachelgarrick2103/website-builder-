@@ -34,6 +34,23 @@ type AgentResult = {
 
 const DEFAULT_SYSTEM_PROMPT =
   "You are PSC Agent, a premium website strategist for beauty businesses.";
+const AI_RESPONSE_TIMEOUT_MS = 5000;
+
+async function withAiTimeout<T>(promise: Promise<T>, timeoutMs = AI_RESPONSE_TIMEOUT_MS): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("ai-timeout")), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
 
 function parseJsonFromText(text: string): Record<string, unknown> | null {
   const trimmed = text.trim();
@@ -184,14 +201,15 @@ export async function generateInitialSite(input: InitialGenerationInput): Promis
   }
 
   try {
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
-      system: input.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `Create a polished website draft.
+    const response = await withAiTimeout(
+      client.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+        system: input.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: `Create a polished website draft.
 
 Project name: ${input.projectName}
 Template type: ${input.templateType}
@@ -208,9 +226,10 @@ Rules:
 - Ensure section ids are valid where required.
 - Return updated siteData values when inferred.
 - Respond with strict JSON inside <response> tags.`,
-        },
-      ],
-    });
+          },
+        ],
+      }),
+    );
 
     const text = response.content
       .map((item) => ("text" in item ? item.text : ""))
@@ -252,14 +271,15 @@ export async function editExistingSite(input: ExistingSiteInput): Promise<AgentR
   }
 
   try {
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
-      system: input.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `Apply this edit request without rebuilding everything unless explicitly asked:
+    const response = await withAiTimeout(
+      client.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+        system: input.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: `Apply this edit request without rebuilding everything unless explicitly asked:
 ${input.prompt}
 
 Current structured data:
@@ -279,9 +299,10 @@ ${JSON.stringify(input.assetUrls)}
 
 Return strict JSON inside <response> tags using the required schema.
 Only include sections that are being generated or updated in this turn.`,
-        },
-      ],
-    });
+          },
+        ],
+      }),
+    );
 
     const text = response.content
       .map((item) => ("text" in item ? item.text : ""))
