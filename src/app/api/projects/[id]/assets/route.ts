@@ -1,8 +1,14 @@
 import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
+import {
+  createFallbackAsset,
+  getFallbackProject,
+  saveFallbackProject,
+} from "@/lib/fallback-store";
 import { db } from "@/lib/db";
 import { jsonError } from "@/lib/api";
+import { isDatabaseUnavailableError } from "@/lib/db";
 
 const allowedTypes = new Set([
   "image/jpeg",
@@ -22,11 +28,20 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const user = await requireUser();
     const { id } = await context.params;
-
-    const project = await db.project.findFirst({
-      where: { id, userId: user.id },
-      select: { id: true },
-    });
+    let useFallback = false;
+    let project: { id: string } | null = null;
+    try {
+      project = await db.project.findFirst({
+        where: { id, userId: user.id },
+        select: { id: true },
+      });
+    } catch (error) {
+      if (!isDatabaseUnavailableError(error)) {
+        throw error;
+      }
+      useFallback = true;
+      project = getFallbackProject(user.id, id);
+    }
 
     if (!project) {
       return jsonError("Project not found.", 404);
@@ -60,6 +75,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       const bytes = await file.arrayBuffer();
       const base64 = Buffer.from(bytes).toString("base64");
       fileUrl = `data:${file.type};base64,${base64}`;
+    }
+
+    if (useFallback) {
+      const fallbackProject = getFallbackProject(user.id, id);
+      if (!fallbackProject) {
+        return jsonError("Project not found.", 404);
+      }
+      const asset = createFallbackAsset({
+        fileUrl,
+        fileType: file.type,
+        originalName: file.name,
+      });
+      fallbackProject.assets = [asset, ...fallbackProject.assets];
+      fallbackProject.updatedAt = new Date();
+      saveFallbackProject(user.id, fallbackProject);
+      return NextResponse.json({ asset }, { status: 201 });
     }
 
     const asset = await db.asset.create({

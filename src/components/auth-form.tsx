@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type Mode = "login" | "signup";
+type Mode = "login" | "invite";
 
 export function AuthForm() {
   const [mode, setMode] = useState<Mode>("login");
@@ -16,12 +16,16 @@ export function AuthForm() {
     setLoading(true);
     setError("");
 
-    const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/signup";
+    const endpoint = "/api/auth/login";
     try {
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(
+          mode === "login"
+            ? { email, password }
+            : { inviteCode: password },
+        ),
       });
 
       const data = (await res.json()) as { error?: string };
@@ -61,47 +65,82 @@ export function AuthForm() {
         <button
           type="button"
           className={`flex-1 rounded-full px-4 py-2 text-sm font-semibold ${
-            mode === "signup" ? "bg-black text-white" : "text-neutral-600"
+            mode === "invite" ? "bg-black text-white" : "text-neutral-600"
           }`}
-          onClick={() => setMode("signup")}
+          onClick={() => setMode("invite")}
         >
-          Create account
+          Use invite code
         </button>
       </div>
 
       <form className="space-y-4" onSubmit={submit}>
-        <div className="space-y-2">
-          <label className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500" htmlFor="email">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            className="input"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500" htmlFor="password">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            className="input"
-            required
-            minLength={8}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
+        {mode === "login" ? (
+          <>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500" htmlFor="email">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                className="input"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="rachel@psclashes.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500" htmlFor="password">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                className="input"
+                required
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500" htmlFor="inviteCode">
+                Invite code
+              </label>
+              <input
+                id="inviteCode"
+                type="text"
+                className="input"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="PSC180-SARAH"
+              />
+            </div>
+            <p className="rounded-xl border border-border bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
+              Students can sign in instantly using their PSC invite code.
+            </p>
+          </>
+        )}
+
+        {mode === "login" ? (
+          <div className="rounded-xl border border-border bg-neutral-50 px-4 py-3 text-xs text-neutral-600">
+            Admin access: <strong>rachel@psclashes.com</strong> with your admin password.
+          </div>
+        ) : (
+          <p className="rounded-xl border border-border bg-neutral-50 px-4 py-3 text-xs text-neutral-600">
+            Invite code format: <strong>PSC180-NAME</strong>
+          </p>
+        )}
 
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
         <button type="submit" className="btn-primary w-full" disabled={loading}>
-          {loading ? "Please wait..." : mode === "login" ? "Sign in" : "Create account"}
+          {loading ? "Please wait..." : mode === "login" ? "Sign in" : "Continue with invite code"}
         </button>
       </form>
     </div>

@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getFallbackProject, saveFallbackProject } from "@/lib/fallback-store";
 import { getOwnedProject, jsonError } from "@/lib/api";
+import { isDatabaseUnavailableError } from "@/lib/db";
 
 const schema = z.object({
   html: z.string(),
@@ -17,17 +19,16 @@ export async function POST(
 ) {
   const user = await requireUser();
   const { id } = await context.params;
+  const body = await request.json().catch(() => null);
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    return jsonError("Invalid project payload.");
+  }
 
   try {
-    const project = await getOwnedProject(id, user);
+    const project = await getOwnedProject(id, user.id);
     if (!project) {
       return jsonError("Project not found.", 404);
-    }
-
-    const body = await request.json().catch(() => null);
-    const parsed = schema.safeParse(body);
-    if (!parsed.success) {
-      return jsonError("Invalid project payload.");
     }
 
     await db.project.update({
@@ -44,6 +45,20 @@ export async function POST(
 
     return NextResponse.json({ ok: true, message: "Saving your project" });
   } catch (error) {
+    if (isDatabaseUnavailableError(error)) {
+      const fallbackProject = getFallbackProject(user.id, id);
+      if (!fallbackProject) {
+        return jsonError("Project not found.", 404);
+      }
+      fallbackProject.currentCodeHtml = parsed.data.html;
+      fallbackProject.currentCodeCss = parsed.data.css;
+      fallbackProject.currentCodeJs = parsed.data.js;
+      fallbackProject.structuredData = parsed.data.structuredData as typeof fallbackProject.structuredData;
+      fallbackProject.updatedAt = new Date();
+      fallbackProject.hasUnpublishedChanges = fallbackProject.status === "LIVE";
+      saveFallbackProject(user.id, fallbackProject);
+      return NextResponse.json({ ok: true, message: "Saving your project" });
+    }
     console.error("save route error", error);
     return jsonError("Unable to save project right now.", 500);
   }

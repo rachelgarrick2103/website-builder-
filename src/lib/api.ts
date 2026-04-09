@@ -1,16 +1,20 @@
 import { NextResponse } from "next/server";
-import type { User } from "@prisma/client";
 import { db } from "@/lib/db";
 
 export function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
-export async function getOwnedProject(projectId: string, user: User) {
+export function shouldUseFallbackMode(request?: Request) {
+  if (!request) return false;
+  return request.headers.get("x-psc-fallback-mode") === "1";
+}
+
+export async function getOwnedProject(projectId: string, userId: string) {
   return db.project.findFirst({
     where: {
       id: projectId,
-      userId: user.id,
+      userId,
     },
     include: {
       messages: {

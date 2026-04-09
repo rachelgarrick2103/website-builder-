@@ -3,6 +3,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { generateInitialSite } from "@/lib/ai";
+import { isDatabaseUnavailableError } from "@/lib/db";
+import { createFallbackProject } from "@/lib/fallback-store";
 import {
   createDefaultStructuredData,
   extractStructuredUpdatesFromMessage,
@@ -60,44 +62,68 @@ export async function POST(request: Request) {
       assetUrls: [],
     });
 
-    const project = await db.project.create({
-      data: {
-        userId: user.id,
-        name: parsed.data.name.trim(),
-        slug: toSlug(parsed.data.name),
-        businessType,
-        websiteGoal,
-        templateType,
-        structuredData: initialSite.structuredData,
-        currentCodeHtml: initialSite.html,
-        currentCodeCss: initialSite.css,
-        currentCodeJs: initialSite.js,
-        messages: {
-          create: [
-            {
-              role: "USER",
-              content: parsed.data.prompt.trim(),
+    const slug = toSlug(parsed.data.name);
+    let projectId: string;
+    try {
+      const project = await db.project.create({
+        data: {
+          userId: user.id,
+          name: parsed.data.name.trim(),
+          slug,
+          businessType,
+          websiteGoal,
+          templateType,
+          structuredData: initialSite.structuredData,
+          currentCodeHtml: initialSite.html,
+          currentCodeCss: initialSite.css,
+          currentCodeJs: initialSite.js,
+          messages: {
+            create: [
+              {
+                role: "USER",
+                content: parsed.data.prompt.trim(),
+              },
+              {
+                role: "ASSISTANT",
+                content: initialSite.assistantReply,
+              },
+            ],
+          },
+          versions: {
+            create: {
+              label: "Initial draft",
+              html: initialSite.html,
+              css: initialSite.css,
+              js: initialSite.js,
+              structuredData: initialSite.structuredData,
             },
-            {
-              role: "ASSISTANT",
-              content: initialSite.assistantReply,
-            },
-          ],
-        },
-        versions: {
-          create: {
-            label: "Initial draft",
-            html: initialSite.html,
-            css: initialSite.css,
-            js: initialSite.js,
-            structuredData: initialSite.structuredData,
           },
         },
-      },
-      select: { id: true }
-    });
+        select: { id: true },
+      });
+      projectId = project.id;
+    } catch (error) {
+      if (!isDatabaseUnavailableError(error)) {
+        throw error;
+      }
+      const fallback = createFallbackProject({
+        user,
+        name: parsed.data.name.trim(),
+        slug,
+        templateType,
+        businessType,
+        websiteGoal,
+        structuredData: initialSite.structuredData,
+        html: initialSite.html,
+        css: initialSite.css,
+        js: initialSite.js,
+        userPrompt: parsed.data.prompt.trim(),
+        assistantMessage: initialSite.assistantReply,
+      });
+      projectId = fallback.id;
+    }
 
-    return NextResponse.json({ ok: true, projectId: project.id });
+    return NextResponse.json({ ok: true, projectId });
   } catch (error) {
     console.error("project create error", error);
     return NextResponse.json({ error: "Unable to create project right now." }, { status: 500 });

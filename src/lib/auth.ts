@@ -1,96 +1,149 @@
-import { randomBytes, createHash } from "crypto";
-import bcrypt from "bcryptjs";
+import { randomBytes } from "crypto";
+import { SignJWT, jwtVerify, JWTPayload } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { db } from "@/lib/db";
 
 const SESSION_COOKIE = "psc_session";
 const SESSION_DURATION_DAYS = 30;
+const ADMIN_EMAIL = "rachel@psclashes.com";
+const ADMIN_PASSWORD = "PSC180admin!";
+const STUDENT_INVITE_PREFIX = "PSC180-";
 
-function hashToken(token: string) {
-  return createHash("sha256").update(token).digest("hex");
+export type AuthRole = "ADMIN" | "STUDENT";
+
+export type AuthUser = {
+  id: string;
+  email: string;
+  role: AuthRole;
+  name: string;
+  inviteCode?: string;
+  sid: string;
+};
+
+export type SessionUser = AuthUser;
+
+type SessionTokenPayload = JWTPayload & {
+  sub: string;
+  email: string;
+  role: AuthRole;
+  name: string;
+  sid: string;
+  inviteCode?: string;
+};
+
+function getJwtSecret() {
+  const secret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET;
+  if (!secret) {
+    throw new Error("Missing NEXTAUTH_SECRET environment variable.");
+  }
+  return new TextEncoder().encode(secret);
 }
 
-export async function hashPassword(password: string) {
-  return bcrypt.hash(password, 12);
+function expiresAtDate() {
+  return new Date(Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
 }
 
-export async function verifyPassword(password: string, hash: string) {
-  return bcrypt.compare(password, hash);
+async function signSessionToken(payload: Omit<SessionTokenPayload, "iat" | "exp">) {
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${SESSION_DURATION_DAYS}d`)
+    .sign(getJwtSecret());
 }
 
-export async function createSession(userId: string) {
-  const token = randomBytes(32).toString("hex");
-  const tokenHash = hashToken(token);
-  const expiresAt = new Date(Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
-
-  await db.session.create({
-    data: {
-      userId,
-      tokenHash,
-      expiresAt
-    }
-  });
-
+async function writeSessionCookie(token: string) {
   const store = await cookies();
   store.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
-    expires: expiresAt,
-    path: "/"
+    expires: expiresAtDate(),
+    path: "/",
   });
-
-  await db.session.deleteMany({
-    where: {
-      userId,
-      expiresAt: { lt: new Date() },
-    },
-  });
-}
-
-export async function rotateSession(userId: string) {
-  await destroySession();
-  await createSession(userId);
 }
 
 export async function destroySession() {
   const store = await cookies();
-  const token = store.get(SESSION_COOKIE)?.value;
-
-  if (token) {
-    await db.session.deleteMany({
-      where: {
-        tokenHash: hashToken(token)
-      }
-    });
-  }
-
   store.delete(SESSION_COOKIE);
 }
 
-export async function getCurrentUser() {
+export function isAdminCredentials(email: string, password: string) {
+  return email.trim().toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASSWORD;
+}
+
+export function normalizeInviteCode(inviteCode: string) {
+  return inviteCode.trim().toUpperCase();
+}
+
+export function isValidInviteCode(inviteCode: string) {
+  const normalized = normalizeInviteCode(inviteCode);
+  return /^PSC180-[A-Z0-9-]{2,40}$/.test(normalized) && normalized.startsWith(STUDENT_INVITE_PREFIX);
+}
+
+export async function createAdminSession() {
+  const token = await signSessionToken({
+    sub: "admin-rachel",
+    email: ADMIN_EMAIL,
+    role: "ADMIN",
+    name: "Rachel",
+    sid: randomBytes(12).toString("hex"),
+  });
+  await writeSessionCookie(token);
+}
+
+export async function createStudentSession(inviteCodeInput: string) {
+  const inviteCode = normalizeInviteCode(inviteCodeInput);
+  if (!isValidInviteCode(inviteCode)) {
+    throw new Error("Invalid invite code.");
+  }
+
+  const nameSegment = inviteCode.split("-").slice(1).join(" ").trim();
+  const displayName = nameSegment
+    ? nameSegment
+        .split(" ")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+        .join(" ")
+    : "PSC Student";
+
+  const token = await signSessionToken({
+    sub: `student-${inviteCode}`,
+    email: `${inviteCode.toLowerCase()}@students.psc`,
+    role: "STUDENT",
+    name: displayName,
+    sid: randomBytes(12).toString("hex"),
+    inviteCode,
+  });
+  await writeSessionCookie(token);
+}
+
+export async function getCurrentUser(): Promise<AuthUser | null> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) {
     return null;
   }
 
-  const session = await db.session.findUnique({
-    where: {
-      tokenHash: hashToken(token)
-    },
-    include: {
-      user: true
-    }
-  });
+  try {
+    const { payload } = await jwtVerify(token, getJwtSecret());
+    const parsed = payload as SessionTokenPayload;
 
-  if (!session || session.expiresAt < new Date()) {
+    if (!parsed.sub || !parsed.email || !parsed.role || !parsed.name || !parsed.sid) {
+      store.delete(SESSION_COOKIE);
+      return null;
+    }
+
+    return {
+      id: parsed.sub,
+      email: parsed.email,
+      role: parsed.role,
+      name: parsed.name,
+      inviteCode: parsed.inviteCode,
+      sid: parsed.sid,
+    };
+  } catch {
     store.delete(SESSION_COOKIE);
     return null;
   }
-
-  return session.user;
 }
 
 export async function requireUser() {

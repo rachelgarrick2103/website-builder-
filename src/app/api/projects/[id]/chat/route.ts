@@ -4,9 +4,11 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { editExistingSite, generateInitialSite } from "@/lib/ai";
 import { db } from "@/lib/db";
+import { getFallbackProject, saveFallbackProject } from "@/lib/fallback-store";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { extractStructuredUpdatesFromMessage } from "@/lib/project-data";
 import { jsonError } from "@/lib/api";
+import { isDatabaseUnavailableError } from "@/lib/db";
 import type { StructuredProjectData } from "@/lib/types";
 
 const schema = z.object({
@@ -155,11 +157,23 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   const { id } = await context.params;
-  const project = await db.project.findFirst({
-    where: { id, userId: user.id },
-    include: { assets: true },
-  });
-  if (!project) {
+  let project = null as Awaited<ReturnType<typeof db.project.findFirst>> | null;
+  let fallbackProject = null as ReturnType<typeof getFallbackProject>;
+  let usingFallback = false;
+  try {
+    project = await db.project.findFirst({
+      where: { id, userId: user.id },
+      include: { assets: true },
+    });
+  } catch (error) {
+    if (!isDatabaseUnavailableError(error)) {
+      throw error;
+    }
+    usingFallback = true;
+    fallbackProject = getFallbackProject(user.id, id);
+  }
+
+  if (!project && !fallbackProject) {
     return jsonError("Project not found.", 404);
   }
 
@@ -169,26 +183,37 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return jsonError("Please provide a valid message.");
   }
 
-  await db.message.create({
-    data: {
-      projectId: project.id,
-      role: MessageRole.USER,
+  if (project) {
+    await db.message.create({
+      data: {
+        projectId: project.id,
+        role: MessageRole.USER,
+        content: parsed.data.message,
+      },
+    });
+  } else if (fallbackProject) {
+    fallbackProject.messages.push({
+      id: crypto.randomUUID(),
+      role: "USER",
       content: parsed.data.message,
-    },
-  });
+      createdAt: new Date(),
+    });
+  }
 
-  const structuredData = extractStructuredUpdatesFromMessage(
-    project.structuredData as StructuredProjectData,
-    parsed.data.message,
-  );
+  const sourceStructuredData = project
+    ? (project.structuredData as StructuredProjectData)
+    : (fallbackProject!.structuredData as StructuredProjectData);
+  const structuredData = extractStructuredUpdatesFromMessage(sourceStructuredData, parsed.data.message);
   const anthropicKey = process.env.ANTHROPIC_KEY;
 
-  const assetUrls = project.assets.map((a) => a.fileUrl);
+  const assetUrls = project
+    ? (project as { assets?: Array<{ fileUrl: string }> }).assets?.map((asset) => asset.fileUrl) ?? []
+    : fallbackProject!.assets.map((asset) => asset.fileUrl);
   const generated =
-    project.currentCodeHtml.trim().length === 0
+    (project ? project.currentCodeHtml : fallbackProject!.currentCodeHtml).trim().length === 0
       ? await generateInitialSite({
-          projectName: project.name,
-          templateType: project.templateType,
+          projectName: project ? project.name : fallbackProject!.name,
+          templateType: project ? project.templateType : (fallbackProject!.templateType as any),
           prompt: parsed.data.message,
           structuredData,
           assetUrls,
@@ -196,9 +221,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           anthropicKey,
         })
       : await editExistingSite({
-          html: project.currentCodeHtml,
-          css: project.currentCodeCss,
-          js: project.currentCodeJs,
+          html: project ? project.currentCodeHtml : fallbackProject!.currentCodeHtml,
+          css: project ? project.currentCodeCss : fallbackProject!.currentCodeCss,
+          js: project ? project.currentCodeJs : fallbackProject!.currentCodeJs,
           prompt: parsed.data.message,
           structuredData,
           assetUrls,
@@ -206,33 +231,51 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           anthropicKey,
         });
 
-  await db.$transaction(async (tx) => {
-    await tx.project.update({
-      where: { id: project.id },
-      data: {
-        currentCodeHtml: generated.html,
-        currentCodeCss: generated.css,
-        currentCodeJs: generated.js,
-        structuredData: generated.structuredData,
-        hasUnpublishedChanges: project.status === "LIVE",
-      },
+  let updatedProject: any = null;
+  if (project && !usingFallback) {
+    await db.$transaction(async (tx) => {
+      await tx.project.update({
+        where: { id: project.id },
+        data: {
+          currentCodeHtml: generated.html,
+          currentCodeCss: generated.css,
+          currentCodeJs: generated.js,
+          structuredData: generated.structuredData,
+          hasUnpublishedChanges: project.status === "LIVE",
+        },
+      });
+      await tx.message.create({
+        data: {
+          projectId: project.id,
+          role: MessageRole.ASSISTANT,
+          content: generated.assistantReply,
+        },
+      });
     });
-    await tx.message.create({
-      data: {
-        projectId: project.id,
-        role: MessageRole.ASSISTANT,
-        content: generated.assistantReply,
-      },
-    });
-  });
 
-  const updatedProject = await db.project.findFirst({
-    where: { id: project.id, userId: user.id },
-    include: {
-      messages: { orderBy: { createdAt: "asc" } },
-      assets: { orderBy: { createdAt: "desc" } },
-    },
-  });
+    updatedProject = await db.project.findFirst({
+      where: { id: project.id, userId: user.id },
+      include: {
+        messages: { orderBy: { createdAt: "asc" } },
+        assets: { orderBy: { createdAt: "desc" } },
+      },
+    });
+  } else if (fallbackProject) {
+    fallbackProject.currentCodeHtml = generated.html;
+    fallbackProject.currentCodeCss = generated.css;
+    fallbackProject.currentCodeJs = generated.js;
+    fallbackProject.structuredData = generated.structuredData;
+    fallbackProject.updatedAt = new Date();
+    fallbackProject.hasUnpublishedChanges = fallbackProject.status === "LIVE";
+    fallbackProject.messages.push({
+      id: crypto.randomUUID(),
+      role: "ASSISTANT",
+      content: generated.assistantReply,
+      createdAt: new Date(),
+    });
+    saveFallbackProject(user.id, fallbackProject);
+    updatedProject = fallbackProject;
+  }
 
   return NextResponse.json({
     project: updatedProject,

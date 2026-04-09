@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ProjectStatus } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { db, isDatabaseUnavailableError } from "@/lib/db";
+import { listFallbackProjects } from "@/lib/fallback-store";
 import { businessTypeLabel, goalLabel } from "@/lib/project-data";
 import { CreateProjectModal } from "@/components/create-project-modal";
 import { DeleteProjectButton } from "@/components/delete-project-button";
@@ -24,11 +25,40 @@ function statusClass(status: ProjectStatus, hasUpdates: boolean) {
 
 export default async function DashboardPage() {
   const user = await requireUser();
+  let dbUnavailable = false;
+  let projects: Array<{
+    id: string;
+    name: string;
+    businessType: string;
+    websiteGoal: string;
+    updatedAt: Date;
+    deployedUrl: string | null;
+    status: ProjectStatus;
+    hasUnpublishedChanges: boolean;
+  }> = [];
 
-  const projects = await db.project.findMany({
-    where: { userId: user.id },
-    orderBy: { updatedAt: "desc" },
-  });
+  try {
+    projects = await db.project.findMany({
+      where: { userId: user.id },
+      orderBy: { updatedAt: "desc" },
+    });
+  } catch (error) {
+    if (!isDatabaseUnavailableError(error)) {
+      throw error;
+    }
+    dbUnavailable = true;
+    const fallback = listFallbackProjects(user.id);
+    projects = fallback.map((project) => ({
+      id: project.id,
+      name: project.name,
+      businessType: project.businessType,
+      websiteGoal: project.websiteGoal,
+      updatedAt: project.updatedAt,
+      deployedUrl: project.deployedUrl,
+      status: project.status,
+      hasUnpublishedChanges: project.hasUnpublishedChanges,
+    }));
+  }
 
   return (
     <main className="shell min-h-screen space-y-8">
@@ -45,6 +75,12 @@ export default async function DashboardPage() {
           <LogoutButton />
         </div>
       </header>
+
+      {dbUnavailable ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Database is temporarily unavailable. You are viewing your temporary session projects.
+        </div>
+      ) : null}
 
       <section className="panel p-6">
         <div className="mb-4 flex items-center justify-between">

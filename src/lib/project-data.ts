@@ -28,8 +28,14 @@ export function labelToTemplate(value: string): TemplateType {
   return TemplateType.EDITORIAL_LUXE;
 }
 
-export function businessTypeLabel(value: BusinessType): string {
-  switch (value) {
+export function businessTypeLabel(value: BusinessType | string): string {
+  const normalizedValue =
+    typeof value === "string"
+      ? value in BusinessType
+        ? (value as BusinessType)
+        : labelToBusinessType(value)
+      : value;
+  switch (normalizedValue) {
     case BusinessType.LASH_ARTIST:
       return "Lash Artist";
     case BusinessType.LASH_EDUCATOR:
@@ -49,8 +55,14 @@ export function businessTypeLabel(value: BusinessType): string {
   }
 }
 
-export function goalLabel(value: WebsiteGoal): string {
-  switch (value) {
+export function goalLabel(value: WebsiteGoal | string): string {
+  const normalizedValue =
+    typeof value === "string"
+      ? value in WebsiteGoal
+        ? (value as WebsiteGoal)
+        : labelToGoal(value)
+      : value;
+  switch (normalizedValue) {
     case WebsiteGoal.BOOK_CLIENTS:
       return "Book clients";
     case WebsiteGoal.SELL_COURSES:
