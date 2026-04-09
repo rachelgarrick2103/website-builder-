@@ -61,6 +61,10 @@ export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
   const [dirty, setDirty] = useState(false);
   const [autosaveStatus, setAutosaveStatus] = useState<"idle" | "saving" | "saved">("idle");
 
+  useEffect(() => {
+    sessionStorage.setItem(`fallback_project_${project.id}`, JSON.stringify(project));
+  }, [project]);
+
   const refreshPreview = useCallback(() => {
     const doc = `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><style>${project.currentCodeCss}</style></head><body>${project.currentCodeHtml}<script>${project.currentCodeJs}</script></body></html>`;
     setPreviewDoc(doc);

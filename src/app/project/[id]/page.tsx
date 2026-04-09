@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { db, isDatabaseUnavailableError } from "@/lib/db";
 import { FallbackProjectLoader } from "@/components/fallback-project-loader";
@@ -12,11 +11,10 @@ export default async function ProjectPage({ params }: { params: Params }) {
   const user = await requireUser();
   const { id } = await params;
 
-  const dashboardMissingMessage = "/dashboard?message=Project%20was%20not%20found.%20Please%20create%20a%20new%20website.";
   let project: any = null;
   let databaseAvailable = true;
   try {
-    project = await db.project.findFirst({
+    const dbProjectPromise = db.project.findFirst({
       where: {
         id,
         userId: user.id,
@@ -33,6 +31,13 @@ export default async function ProjectPage({ params }: { params: Params }) {
         },
       },
     });
+    const timeoutPromise = new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), 3000);
+    });
+    project = await Promise.race([dbProjectPromise, timeoutPromise]);
+    if (!project) {
+      databaseAvailable = false;
+    }
   } catch (error) {
     if (!isDatabaseUnavailableError(error)) {
       throw error;
@@ -44,7 +49,7 @@ export default async function ProjectPage({ params }: { params: Params }) {
     const fallbackProject = await getFallbackProject(user, id);
     if (!fallbackProject) {
       if (databaseAvailable) {
-        redirect(dashboardMissingMessage);
+        return <FallbackProjectLoader projectId={id} />;
       }
       return <FallbackProjectLoader projectId={id} />;
     }
