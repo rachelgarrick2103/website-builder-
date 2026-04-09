@@ -47,7 +47,7 @@ export default async function DashboardPage() {
       throw error;
     }
     dbUnavailable = true;
-    const fallback = listFallbackProjects(user.id);
+    const fallback = await listFallbackProjects(user);
     projects = fallback.map((project) => ({
       id: project.id,
       name: project.name,

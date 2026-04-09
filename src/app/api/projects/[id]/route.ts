@@ -15,7 +15,7 @@ export async function GET(
   try {
     const project = await getOwnedProject(id, user.id);
     if (!project) {
-      const fallbackProject = getFallbackProject(user.id, id);
+      const fallbackProject = getFallbackProject(user, id);
       if (!fallbackProject) {
         return jsonError("Project not found.", 404);
       }
@@ -23,7 +23,7 @@ export async function GET(
     }
     return NextResponse.json({ project });
   } catch (error) {
-    const fallbackProject = getFallbackProject(user.id, id);
+    const fallbackProject = getFallbackProject(user, id);
     if (!fallbackProject) {
       console.error("project get error", error);
       return jsonError("Project not found.", 404);
@@ -49,11 +49,11 @@ export async function DELETE(
     });
 
     if (!project) {
-      const fallback = getFallbackProject(user.id, id);
+      const fallback = getFallbackProject(user, id);
       if (!fallback) {
         return jsonError("Project not found.", 404);
       }
-      deleteFallbackProject(user.id, id);
+      await deleteFallbackProject(user, id);
       return NextResponse.json({ ok: true });
     }
 
@@ -62,12 +62,12 @@ export async function DELETE(
     });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const fallback = getFallbackProject(user.id, id);
+    const fallback = getFallbackProject(user, id);
     if (!fallback) {
       console.error("project delete error", error);
       return jsonError("Project not found.", 404);
     }
-    deleteFallbackProject(user.id, id);
+    await deleteFallbackProject(user, id);
     return NextResponse.json({ ok: true });
   }
 }
@@ -94,9 +94,9 @@ export async function POST(
     });
 
     if (!project) {
-      const fallback = getFallbackProject(user.id, id);
+      const fallback = getFallbackProject(user, id);
       if (!fallback) return jsonError("Project not found.", 404);
-      const cloned = cloneFallbackProject(user.id, fallback);
+      const cloned = await cloneFallbackProject(user, fallback);
       return NextResponse.json({ ok: true, projectId: cloned.id });
     }
 
@@ -147,12 +147,12 @@ export async function POST(
 
     return NextResponse.json({ ok: true, projectId: duplicated.id });
   } catch (error) {
-    const fallback = getFallbackProject(user.id, id);
+    const fallback = getFallbackProject(user, id);
     if (!fallback) {
       console.error("project duplicate error", error);
       return jsonError("Project not found.", 404);
     }
-    const cloned = cloneFallbackProject(user.id, fallback);
+    const cloned = await cloneFallbackProject(user, fallback);
     return NextResponse.json({ ok: true, projectId: cloned.id });
   }
 }

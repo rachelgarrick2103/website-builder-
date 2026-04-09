@@ -1,5 +1,5 @@
 import { randomBytes } from "crypto";
-import { SignJWT, jwtVerify, JWTPayload } from "jose";
+import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -18,6 +18,7 @@ export type AuthUser = {
   name: string;
   inviteCode?: string;
   sid: string;
+  fallbackState?: string;
 };
 
 export type SessionUser = AuthUser;
@@ -29,6 +30,7 @@ type SessionTokenPayload = JWTPayload & {
   name: string;
   sid: string;
   inviteCode?: string;
+  fallbackState?: string;
 };
 
 function getJwtSecret() {
@@ -60,6 +62,27 @@ async function writeSessionCookie(token: string) {
     expires: expiresAtDate(),
     path: "/",
   });
+}
+
+async function readVerifiedSession() {
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value;
+  if (!token) {
+    return null;
+  }
+  try {
+    const { payload } = await jwtVerify(token, getJwtSecret());
+    const parsed = payload as SessionTokenPayload;
+
+    if (!parsed.sub || !parsed.email || !parsed.role || !parsed.name || !parsed.sid) {
+      store.delete(SESSION_COOKIE);
+      return null;
+    }
+    return { store, payload: parsed };
+  } catch {
+    store.delete(SESSION_COOKIE);
+    return null;
+  }
 }
 
 export async function destroySession() {
@@ -117,33 +140,20 @@ export async function createStudentSession(inviteCodeInput: string) {
 }
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
-  const store = await cookies();
-  const token = store.get(SESSION_COOKIE)?.value;
-  if (!token) {
+  const session = await readVerifiedSession();
+  if (!session) {
     return null;
   }
-
-  try {
-    const { payload } = await jwtVerify(token, getJwtSecret());
-    const parsed = payload as SessionTokenPayload;
-
-    if (!parsed.sub || !parsed.email || !parsed.role || !parsed.name || !parsed.sid) {
-      store.delete(SESSION_COOKIE);
-      return null;
-    }
-
-    return {
-      id: parsed.sub,
-      email: parsed.email,
-      role: parsed.role,
-      name: parsed.name,
-      inviteCode: parsed.inviteCode,
-      sid: parsed.sid,
-    };
-  } catch {
-    store.delete(SESSION_COOKIE);
-    return null;
-  }
+  const parsed = session.payload;
+  return {
+    id: parsed.sub,
+    email: parsed.email,
+    role: parsed.role,
+    name: parsed.name,
+    inviteCode: parsed.inviteCode,
+    sid: parsed.sid,
+    fallbackState: parsed.fallbackState,
+  };
 }
 
 export async function requireUser() {
@@ -152,4 +162,21 @@ export async function requireUser() {
     redirect("/login");
   }
   return user;
+}
+
+export async function setSessionFallbackState(fallbackState: string | null) {
+  const session = await readVerifiedSession();
+  if (!session) return;
+
+  const payload = session.payload;
+  const token = await signSessionToken({
+    sub: payload.sub,
+    email: payload.email,
+    role: payload.role,
+    name: payload.name,
+    sid: payload.sid,
+    inviteCode: payload.inviteCode,
+    fallbackState: fallbackState ?? undefined,
+  });
+  await writeSessionCookie(token);
 }

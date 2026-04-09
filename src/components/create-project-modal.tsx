@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { getClientAppBaseUrl } from "@/lib/url";
 
 const businessTypes = [
   "Lash Artist",
@@ -57,7 +58,7 @@ export function CreateProjectModal({ onCreated }: Props) {
       }
       setOpen(false);
       onCreated?.();
-      window.location.href = `/project/${data.projectId}`;
+      window.location.href = `${getClientAppBaseUrl()}/project/${data.projectId}`;
     } catch {
       setError("Unable to create this project right now.");
     } finally {

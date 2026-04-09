@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, RefreshCw, Save, Smartphone, Monitor, UploadCloud } from "lucide-react";
 import type { MessageRole, ProjectStatus } from "@prisma/client";
+import { getPublicAppBaseUrl } from "@/lib/url";
 
 type Message = {
   id: string;
@@ -380,7 +381,12 @@ export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
           </div>
           <div className="border-t border-border p-4 text-sm text-neutral-600">
             {project.deployedUrl ? (
-              <a href={project.deployedUrl} target="_blank" rel="noreferrer" className="font-semibold text-black underline">
+              <a
+                href={project.deployedUrl.startsWith("http") ? project.deployedUrl : `${getPublicAppBaseUrl()}${project.deployedUrl}`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold text-black underline"
+              >
                 Open live site
               </a>
             ) : (

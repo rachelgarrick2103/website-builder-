@@ -26,7 +26,7 @@ export default async function ProjectSettingsPage({ params }: { params: Promise<
     });
   } catch (error) {
     if (isDatabaseUnavailableError(error)) {
-      const fallbackProject = getFallbackProject(user.id, id);
+      const fallbackProject = await getFallbackProject(user, id);
       if (!fallbackProject) {
         notFound();
       }

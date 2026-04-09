@@ -46,7 +46,7 @@ export async function POST(
     return NextResponse.json({ ok: true, message: "Saving your project" });
   } catch (error) {
     if (isDatabaseUnavailableError(error)) {
-      const fallbackProject = getFallbackProject(user.id, id);
+      const fallbackProject = await getFallbackProject(user, id);
       if (!fallbackProject) {
         return jsonError("Project not found.", 404);
       }
@@ -56,7 +56,7 @@ export async function POST(
       fallbackProject.structuredData = parsed.data.structuredData as typeof fallbackProject.structuredData;
       fallbackProject.updatedAt = new Date();
       fallbackProject.hasUnpublishedChanges = fallbackProject.status === "LIVE";
-      saveFallbackProject(user.id, fallbackProject);
+      await saveFallbackProject(user, fallbackProject);
       return NextResponse.json({ ok: true, message: "Saving your project" });
     }
     console.error("save route error", error);

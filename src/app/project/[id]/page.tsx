@@ -37,7 +37,7 @@ export default async function ProjectPage({ params }: { params: Params }) {
   }
 
   if (!project) {
-    const fallbackProject = getFallbackProject(user.id, id);
+    const fallbackProject = await getFallbackProject(user, id);
     if (!fallbackProject) {
       notFound();
     }

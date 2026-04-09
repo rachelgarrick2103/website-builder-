@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { MessageRole, ProjectStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
@@ -8,9 +9,10 @@ import {
   saveFallbackProject,
 } from "@/lib/fallback-store";
 import { isDatabaseUnavailableError } from "@/lib/db";
+import { getPublicAppBaseUrl } from "@/lib/url";
 
 function baseUrl() {
-  return process.env.APP_BASE_URL ?? "http://localhost:3000";
+  return getPublicAppBaseUrl();
 }
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -56,7 +58,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     return NextResponse.json({ project: updated });
   } catch (error) {
     if (isDatabaseUnavailableError(error)) {
-      const project = getFallbackProject(user.id, id);
+      const project = await getFallbackProject(user, id);
       if (!project) {
         return jsonError("Project not found.", 404);
       }
@@ -68,13 +70,13 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       project.publishedAt = new Date();
       project.deployedUrl = `${deployedUrl}${project.slug}`;
       project.messages.push({
-        id: crypto.randomUUID(),
+        id: randomUUID(),
         role: MessageRole.SYSTEM,
         content: "Your website is now live.",
         createdAt: new Date(),
       });
       project.updatedAt = new Date();
-      saveFallbackProject(user.id, project);
+      await saveFallbackProject(user, project);
       return NextResponse.json({ project });
     }
     console.error("publish error", error);

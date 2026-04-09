@@ -20,7 +20,7 @@ export async function POST(_: Request, { params }: Params) {
     const { id, versionId } = await params;
     const project = await getOwnedProject(id, user.id);
     if (!project) {
-      const fallbackProject = getFallbackProject(user.id, id);
+      const fallbackProject = await getFallbackProject(user, id);
       if (!fallbackProject) return jsonError("Project not found.", 404);
       const version = fallbackProject.versions.find((item) => item.id === versionId);
       if (!version) return jsonError("Version not found.", 404);
@@ -40,7 +40,7 @@ export async function POST(_: Request, { params }: Params) {
           createdAt: new Date(),
         },
       ];
-      saveFallbackProject(user.id, fallbackProject);
+      await saveFallbackProject(user, fallbackProject);
       return NextResponse.json({ ok: true });
     }
 

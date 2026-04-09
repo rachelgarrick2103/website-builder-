@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { getPublicAppBaseUrl } from "@/lib/url";
 
 type DeleteProjectButtonProps = {
   projectId: string;
@@ -27,7 +28,7 @@ export function DeleteProjectButton({ projectId, projectName }: DeleteProjectBut
         return;
       }
       if (window.location.pathname.includes("/settings")) {
-        window.location.href = "/dashboard";
+        window.location.href = `${getPublicAppBaseUrl()}/dashboard`;
       } else {
         window.location.reload();
       }

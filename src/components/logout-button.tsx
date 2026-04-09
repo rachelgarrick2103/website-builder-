@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { publicAppUrl } from "@/lib/url";
 
 export function LogoutButton() {
   const [loading, setLoading] = useState(false);
@@ -10,7 +11,7 @@ export function LogoutButton() {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } finally {
-      window.location.href = "/login";
+      window.location.href = publicAppUrl("/login");
     }
   }
 

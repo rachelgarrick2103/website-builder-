@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { getPublicAppBaseUrl } from "@/lib/url";
 
 type Mode = "login" | "invite";
 
@@ -34,7 +35,7 @@ export function AuthForm() {
         return;
       }
 
-      window.location.href = "/dashboard";
+      window.location.href = `${getPublicAppBaseUrl()}/dashboard`;
     } catch {
       setError("Unable to continue right now. Please try again.");
     } finally {

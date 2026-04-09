@@ -22,7 +22,8 @@ export default async function ProjectPreviewPage({ params }: { params: Promise<{
     }
   }
 
-  const activeProject = project ?? getFallbackProject(user.sid, id) ?? getFallbackProject(user.id, id);
+  const fallbackProject = await getFallbackProject(user, id);
+  const activeProject = project ?? fallbackProject;
   if (!activeProject) {
     redirect("/dashboard");
   }

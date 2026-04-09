@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { MessageRole } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -170,7 +171,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       throw error;
     }
     usingFallback = true;
-    fallbackProject = getFallbackProject(user.id, id);
+    fallbackProject = await getFallbackProject(user, id);
   }
 
   if (!project && !fallbackProject) {
@@ -193,7 +194,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     });
   } else if (fallbackProject) {
     fallbackProject.messages.push({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       role: "USER",
       content: parsed.data.message,
       createdAt: new Date(),
@@ -268,12 +269,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     fallbackProject.updatedAt = new Date();
     fallbackProject.hasUnpublishedChanges = fallbackProject.status === "LIVE";
     fallbackProject.messages.push({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       role: "ASSISTANT",
       content: generated.assistantReply,
       createdAt: new Date(),
     });
-    saveFallbackProject(user.id, fallbackProject);
+    await saveFallbackProject(user, fallbackProject);
     updatedProject = fallbackProject;
   }
 

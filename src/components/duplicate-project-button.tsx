@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { getPublicAppBaseUrl } from "@/lib/url";
 
 type Props = {
   projectId: string;
@@ -25,7 +26,7 @@ export function DuplicateProjectButton({ projectId }: Props) {
         return;
       }
       if (data.projectId) {
-        window.location.href = `/project/${data.projectId}`;
+        window.location.href = `${getPublicAppBaseUrl()}/project/${data.projectId}`;
         return;
       }
       window.location.reload();

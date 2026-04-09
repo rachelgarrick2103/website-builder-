@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { getClientAppBaseUrl } from "@/lib/url";
 
 type Props = {
   projectId: string;
@@ -24,7 +25,7 @@ export function RestoreVersionButton({ projectId, versionId }: Props) {
         window.alert(data.error ?? "Unable to restore this version.");
         return;
       }
-      window.location.href = `/project/${projectId}`;
+      window.location.href = `${getClientAppBaseUrl()}/project/${projectId}`;
     } catch {
       window.alert("Unable to restore this version right now.");
     } finally {

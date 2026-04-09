@@ -32,7 +32,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     let project: { id: string } | null = null;
     try {
       project = await db.project.findFirst({
-        where: { id, userId: user.id },
+        where: { id, userId: user.sid },
         select: { id: true },
       });
     } catch (error) {
@@ -40,7 +40,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         throw error;
       }
       useFallback = true;
-      project = getFallbackProject(user.id, id);
+      project = await getFallbackProject(user, id);
     }
 
     if (!project) {
@@ -78,7 +78,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     if (useFallback) {
-      const fallbackProject = getFallbackProject(user.id, id);
+      const fallbackProject = await getFallbackProject(user, id);
       if (!fallbackProject) {
         return jsonError("Project not found.", 404);
       }
@@ -89,14 +89,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       });
       fallbackProject.assets = [asset, ...fallbackProject.assets];
       fallbackProject.updatedAt = new Date();
-      saveFallbackProject(user.id, fallbackProject);
+      await saveFallbackProject(user, fallbackProject);
       return NextResponse.json({ asset }, { status: 201 });
     }
 
     const asset = await db.asset.create({
       data: {
         projectId: project.id,
-        userId: user.id,
+        userId: user.sid,
         fileUrl,
         fileType: file.type,
         originalName: file.name,

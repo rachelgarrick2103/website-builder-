@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { MessageRole } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
@@ -32,7 +33,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       console.error("versions list error", error);
       return jsonError("Unable to load versions right now.", 500);
     }
-    const fallback = getFallbackProject(user.id, id);
+    const fallback = await getFallbackProject(user, id);
     if (!fallback) {
       return jsonError("Project not found.", 404);
     }
@@ -88,20 +89,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       console.error("save version error", error);
       return jsonError("Unable to save version right now.", 500);
     }
-    const fallback = getFallbackProject(user.id, id);
+    const fallback = await getFallbackProject(user, id);
     if (!fallback) {
       return jsonError("Project not found.", 404);
     }
     const version = createFallbackVersion(fallback, label);
     fallback.versions.unshift(version);
     fallback.messages.push({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       role: MessageRole.SYSTEM,
       content: `Saved version: ${label}`,
       createdAt: new Date(),
     });
     fallback.updatedAt = new Date();
-    saveFallbackProject(user.id, fallback);
+    await saveFallbackProject(user, fallback);
     return NextResponse.json({ version }, { status: 201 });
   }
 }

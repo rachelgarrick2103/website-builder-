@@ -106,7 +106,7 @@ export async function POST(request: Request) {
       if (!isDatabaseUnavailableError(error)) {
         throw error;
       }
-      const fallback = createFallbackProject({
+      const fallback = await createFallbackProject({
         user,
         name: parsed.data.name.trim(),
         slug,
