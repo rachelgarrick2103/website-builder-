@@ -9,6 +9,8 @@ type InitialGenerationInput = {
   structuredData: StructuredProjectData;
   prompt: string;
   assetUrls: string[];
+  systemPrompt?: string;
+  anthropicKey?: string;
 };
 
 type ExistingSiteInput = {
@@ -18,6 +20,8 @@ type ExistingSiteInput = {
   prompt: string;
   structuredData: StructuredProjectData;
   assetUrls: string[];
+  systemPrompt?: string;
+  anthropicKey?: string;
 };
 
 type AgentResult = {
@@ -28,8 +32,21 @@ type AgentResult = {
   structuredData: StructuredProjectData;
 };
 
+const DEFAULT_SYSTEM_PROMPT =
+  "You are PSC Agent, a premium website strategist for beauty businesses.";
+
 function parseJsonFromText(text: string): Record<string, unknown> | null {
   const trimmed = text.trim();
+
+  const responseTagMatch = trimmed.match(/<response>\s*([\s\S]*?)\s*<\/response>/i);
+  if (responseTagMatch) {
+    try {
+      return JSON.parse(responseTagMatch[1]) as Record<string, unknown>;
+    } catch {
+      // Continue.
+    }
+  }
+
   try {
     return JSON.parse(trimmed) as Record<string, unknown>;
   } catch {
@@ -48,22 +65,99 @@ function parseJsonFromText(text: string): Record<string, unknown> | null {
   }
 }
 
-function getAnthropicClient() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+function getAnthropicClient(anthropicKey?: string) {
+  const apiKey = anthropicKey ?? process.env.ANTHROPIC_KEY;
   if (!apiKey) return null;
   return new Anthropic({ apiKey });
 }
 
+function htmlFromSections(sections: Record<string, unknown>): string {
+  const orderedKeys = ["hero", "about", "services", "gallery", "booking", "contact"];
+  const orderedHtml = orderedKeys
+    .map((key) => (typeof sections[key] === "string" ? (sections[key] as string) : ""))
+    .filter((value) => value.trim().length > 0);
+  const extras = Object.entries(sections)
+    .filter(([key]) => !orderedKeys.includes(key))
+    .map(([, value]) => (typeof value === "string" ? value : ""))
+    .filter((value) => value.trim().length > 0);
+  const merged = [...orderedHtml, ...extras].join("\n");
+  if (!merged.trim()) return "";
+  return `<main>\n${merged}\n</main>`;
+}
+
+function mergeStructuredDataFromSiteData(
+  existing: StructuredProjectData,
+  siteData: Record<string, unknown>,
+): StructuredProjectData {
+  const merged = { ...existing };
+
+  if (typeof siteData.bizName === "string" && siteData.bizName.trim()) {
+    merged.brandName = siteData.bizName.trim();
+  }
+  if (typeof siteData.positioning === "string" && siteData.positioning.trim()) {
+    merged.tagline = siteData.positioning.trim();
+  }
+  if (typeof siteData.location === "string" && siteData.location.trim()) {
+    merged.location = siteData.location.trim();
+  }
+  if (typeof siteData.instagram === "string" && siteData.instagram.trim()) {
+    merged.instagramHandle = siteData.instagram.trim();
+  }
+  if (typeof siteData.bookingLink === "string" && siteData.bookingLink.trim()) {
+    merged.bookingUrl = siteData.bookingLink.trim();
+  }
+  if (Array.isArray(siteData.services)) {
+    const serviceItems = siteData.services.filter((value): value is string => typeof value === "string");
+    if (serviceItems.length) {
+      merged.offers = Array.from(new Set([...merged.offers, ...serviceItems]));
+    }
+  }
+  if (typeof siteData.brandColours === "string" && siteData.brandColours.trim()) {
+    merged.inspirationNotes = Array.from(
+      new Set([...merged.inspirationNotes, `Brand colours: ${siteData.brandColours.trim()}`]),
+    );
+  }
+  if (typeof siteData.fontStyle === "string" && siteData.fontStyle.trim()) {
+    merged.inspirationNotes = Array.from(
+      new Set([...merged.inspirationNotes, `Font style: ${siteData.fontStyle.trim()}`]),
+    );
+  }
+  return merged;
+}
+
 function sanitizeAgentResult(payload: Record<string, unknown>, fallback: AgentResult): AgentResult {
-  const html = typeof payload.html === "string" && payload.html.length > 20 ? payload.html : fallback.html;
+  const sections =
+    typeof payload.sections === "object" && payload.sections
+      ? (payload.sections as Record<string, unknown>)
+      : null;
+  const siteData =
+    typeof payload.siteData === "object" && payload.siteData
+      ? (payload.siteData as Record<string, unknown>)
+      : null;
+  const responseSectionsHtml = sections ? htmlFromSections(sections) : "";
+  const html = typeof payload.html === "string" && payload.html.length > 20
+    ? payload.html
+    : responseSectionsHtml.length > 20
+      ? responseSectionsHtml
+      : fallback.html;
   const css = typeof payload.css === "string" ? payload.css : fallback.css;
   const js = typeof payload.js === "string" ? payload.js : fallback.js;
   const assistantReply =
-    typeof payload.assistantReply === "string" ? payload.assistantReply : fallback.assistantReply;
-  const structuredData =
-    typeof payload.structuredData === "object" && payload.structuredData
-      ? ({ ...fallback.structuredData, ...(payload.structuredData as Record<string, unknown>) } as StructuredProjectData)
-      : fallback.structuredData;
+    typeof payload.assistantReply === "string"
+      ? payload.assistantReply
+      : typeof payload.message === "string"
+        ? payload.message
+        : fallback.assistantReply;
+  let structuredData = fallback.structuredData;
+  if (typeof payload.structuredData === "object" && payload.structuredData) {
+    structuredData = {
+      ...structuredData,
+      ...(payload.structuredData as Record<string, unknown>),
+    } as StructuredProjectData;
+  }
+  if (siteData) {
+    structuredData = mergeStructuredDataFromSiteData(structuredData, siteData);
+  }
 
   return { html, css, js, assistantReply, structuredData };
 }
@@ -77,7 +171,7 @@ export async function generateInitialSite(input: InitialGenerationInput): Promis
     structuredData: input.structuredData,
   };
 
-  const client = getAnthropicClient();
+  const client = getAnthropicClient(input.anthropicKey);
   if (!client) {
     return fallback;
   }
@@ -86,8 +180,7 @@ export async function generateInitialSite(input: InitialGenerationInput): Promis
     const response = await client.messages.create({
       model: "claude-3-7-sonnet-latest",
       max_tokens: 4096,
-      system:
-        "You are PSC Agent, a premium website strategist for beauty businesses. Output JSON only with keys html, css, js, assistantReply, structuredData. Keep luxury black-and-white aesthetic and conversion-focused sections.",
+      system: input.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
       messages: [
         {
           role: "user",
@@ -103,12 +196,11 @@ ${JSON.stringify(input.assetUrls)}
 
 Rules:
 - Do not mention AI or third-party tooling.
-- Keep a premium editorial beauty style.
-- Include hero, about, offers/services, social proof, CTA.
-- Return valid HTML section markup only for inside <main>.
-- Return CSS and optional JS.
-- Return updated structuredData if additional insights can be inferred.
-- Respond with strict JSON only.`,
+- Follow the response format in the system prompt.
+- Include complete section HTML for sections you generate.
+- Ensure section ids are valid where required.
+- Return updated siteData values when inferred.
+- Respond with strict JSON inside <response> tags.`,
         },
       ],
     });
@@ -147,7 +239,7 @@ export async function editExistingSite(input: ExistingSiteInput): Promise<AgentR
     structuredData: input.structuredData,
   };
 
-  const client = getAnthropicClient();
+  const client = getAnthropicClient(input.anthropicKey);
   if (!client) {
     return fallback;
   }
@@ -156,8 +248,7 @@ export async function editExistingSite(input: ExistingSiteInput): Promise<AgentR
     const response = await client.messages.create({
       model: "claude-3-7-sonnet-latest",
       max_tokens: 4096,
-      system:
-        "You are PSC Agent. Modify an existing website with targeted edits while preserving structure and premium aesthetics. Output JSON only.",
+      system: input.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
       messages: [
         {
           role: "user",
@@ -179,7 +270,8 @@ ${input.js}
 Asset URLs:
 ${JSON.stringify(input.assetUrls)}
 
-Return strict JSON only with html, css, js, assistantReply, structuredData.`,
+Return strict JSON inside <response> tags using the required schema.
+Only include sections that are being generated or updated in this turn.`,
         },
       ],
     });
