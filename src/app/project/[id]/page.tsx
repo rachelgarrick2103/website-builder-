@@ -1,6 +1,7 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { db, isDatabaseUnavailableError } from "@/lib/db";
+import { FallbackProjectLoader } from "@/components/fallback-project-loader";
 import { ProjectBuilder } from "@/components/project-builder";
 import { buildPreviewDocument } from "@/lib/api";
 import { getFallbackProject } from "@/lib/fallback-store";
@@ -11,7 +12,9 @@ export default async function ProjectPage({ params }: { params: Params }) {
   const user = await requireUser();
   const { id } = await params;
 
+  const dashboardMissingMessage = "/dashboard?message=Project%20was%20not%20found.%20Please%20create%20a%20new%20website.";
   let project: any = null;
+  let databaseAvailable = true;
   try {
     project = await db.project.findFirst({
       where: {
@@ -34,12 +37,16 @@ export default async function ProjectPage({ params }: { params: Params }) {
     if (!isDatabaseUnavailableError(error)) {
       throw error;
     }
+    databaseAvailable = false;
   }
 
   if (!project) {
     const fallbackProject = await getFallbackProject(user, id);
     if (!fallbackProject) {
-      notFound();
+      if (databaseAvailable) {
+        redirect(dashboardMissingMessage);
+      }
+      return <FallbackProjectLoader projectId={id} />;
     }
     const initialPreviewDoc = buildPreviewDocument(
       fallbackProject.currentCodeHtml,

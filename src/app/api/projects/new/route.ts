@@ -12,6 +12,7 @@ import {
   labelToGoal,
   labelToTemplate,
 } from "@/lib/project-data";
+import { mapFallbackProjectToApi } from "@/lib/fallback-store";
 
 const schema = z.object({
   name: z.string().min(2).max(80),
@@ -64,6 +65,7 @@ export async function POST(request: Request) {
 
     const slug = toSlug(parsed.data.name);
     let projectId: string;
+    let fallbackProject: ReturnType<typeof mapFallbackProjectToApi> | null = null;
     try {
       const project = await db.project.create({
         data: {
@@ -121,9 +123,10 @@ export async function POST(request: Request) {
         assistantMessage: initialSite.assistantReply,
       });
       projectId = fallback.id;
+      fallbackProject = mapFallbackProjectToApi(fallback);
     }
 
-    return NextResponse.json({ ok: true, projectId });
+    return NextResponse.json({ ok: true, projectId, fallbackProject });
   } catch (error) {
     console.error("project create error", error);
     return NextResponse.json({ error: "Unable to create project right now." }, { status: 500 });

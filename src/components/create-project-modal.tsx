@@ -51,10 +51,13 @@ export function CreateProjectModal({ onCreated }: Props) {
           prompt,
         }),
       });
-      const data = (await res.json()) as { error?: string; projectId?: string };
+      const data = (await res.json()) as { error?: string; projectId?: string; fallbackProject?: unknown };
       if (!res.ok || !data.projectId) {
         setError(data.error ?? "Unable to create this project right now.");
         return;
+      }
+      if (data.fallbackProject) {
+        sessionStorage.setItem(`fallback_project_${data.projectId}`, JSON.stringify(data.fallbackProject));
       }
       setOpen(false);
       onCreated?.();
