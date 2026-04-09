@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectStatus {
+  DRAFT
+  PUBLISHING
+  LIVE
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum TemplateType {
+  EDITORIAL_LUXE
+  MINIMAL_BOUTIQUE
+  BOLD_STUDIO
+}
+
+enum BusinessType {
+  LASH_ARTIST
+  LASH_EDUCATOR
+  BEAUTY_ACADEMY
+  PERSONAL_BRAND
+  SALON
+  PRODUCT_BRAND
+  HYBRID
+}
+
+enum WebsiteGoal {
+  BOOK_CLIENTS
+  SELL_COURSES
+  BUILD_AUTHORITY
+  SHOWCASE_WORK
+  CAPTURE_LEADS
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+  projects     Project[]
+  assets       Asset[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Project {
+  id                  String        @id @default(cuid())
+  userId               String
+  name                String
+  slug                String        @unique
+  status              ProjectStatus @default(DRAFT)
+  templateType        TemplateType
+  businessType        BusinessType
+  websiteGoal         WebsiteGoal
+  structuredData      Json
+  currentCodeHtml     String        @default("")
+  currentCodeCss      String        @default("")
+  currentCodeJs       String        @default("")
+  previewSnapshot     String?
+  deployedUrl         String?
+  publishedAt         DateTime?
+  hasUnpublishedChanges Boolean     @default(false)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages            Message[]
+  assets              Asset[]
+  versions            Version[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Message {
+  id        String      @id @default(cuid())
+  projectId String
+  role      MessageRole
+  content   String
+  createdAt DateTime    @default(now())
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Asset {
+  id           String   @id @default(cuid())
+  projectId     String
+  userId       String
+  fileUrl      String
+  fileType     String
+  originalName String
+  createdAt    DateTime @default(now())
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([userId])
+}
+
+model Version {
+  id             String   @id @default(cuid())
+  projectId      String
+  label          String
+  html           String
+  css            String
+  js             String
+  structuredData Json
+  createdAt      DateTime @default(now())
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}

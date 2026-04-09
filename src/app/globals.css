@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-white text-ink font-body antialiased;
+}
+
+a {
+  @apply text-inherit no-underline;
+}
+
+.shell {
+  @apply mx-auto w-[min(1180px,95%)] py-8;
+}
+
+.panel {
+  @apply rounded-2xl border border-border bg-white shadow-panel;
+}
+
+.section-title {
+  @apply font-display text-4xl uppercase tracking-[0.03em] md:text-6xl;
+}
+
+.status-chip {
+  @apply inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-semibold uppercase tracking-wide;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center rounded-full border border-black bg-black px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center rounded-full border border-border bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60;
+}
+
+.input {
+  @apply w-full rounded-xl border border-border bg-white px-4 py-2.5 text-sm text-ink outline-none transition focus:border-black;
+}
+
+.textarea {
+  @apply w-full rounded-xl border border-border bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-black;
+}
