@@ -3,6 +3,8 @@ generator client {
 }
 
 datasource db {
+  // Vercel deployments must provide DATABASE_URL as a PostgreSQL environment variable.
+  // A local SQLite file URL (for example, file:./dev.db) will not work in Vercel.
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
