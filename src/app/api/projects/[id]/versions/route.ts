@@ -16,7 +16,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const { id } = await params;
 
   try {
-    const project = await getOwnedProject(id, user.id);
+    const project = await getOwnedProject(id, user.id, user.role === "ADMIN");
     if (!project) {
       return jsonError("Project not found.", 404);
     }
@@ -61,7 +61,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const label = parsed.data.label ?? `Snapshot ${new Date().toLocaleString()}`;
 
   try {
-    const project = await getOwnedProject(id, user.id);
+    const project = await getOwnedProject(id, user.id, user.role === "ADMIN");
     if (!project) {
       return jsonError("Project not found.", 404);
     }

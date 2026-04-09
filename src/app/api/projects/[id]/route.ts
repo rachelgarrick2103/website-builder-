@@ -12,7 +12,7 @@ export async function GET(
   const { id } = await context.params;
 
   try {
-    const project = await getOwnedProject(id, user.id);
+    const project = await getOwnedProject(id, user.id, user.role === "ADMIN");
     if (!project) {
       const fallbackProject = getFallbackProject(user, id);
       if (!fallbackProject) {
@@ -42,12 +42,10 @@ export async function DELETE(
   const { id } = await context.params;
 
   try {
-    const lookupQuery = supabase
-      .from("Project")
-      .select("id")
-      .eq("id", id)
-      .eq("userId", user.id)
-      .maybeSingle();
+    const lookupQuery =
+      user.role === "ADMIN"
+        ? supabase.from("Project").select("id,userId").eq("id", id).maybeSingle()
+        : supabase.from("Project").select("id,userId").eq("id", id).eq("userId", user.id).maybeSingle();
     const { data: project, error: lookupError } = await withSupabaseTimeout(lookupQuery);
     if (lookupError) throw lookupError;
 
@@ -60,7 +58,10 @@ export async function DELETE(
       return NextResponse.json({ ok: true });
     }
 
-    const deleteQuery = supabase.from("Project").delete().eq("id", project.id).eq("userId", user.id);
+    const deleteQuery =
+      user.role === "ADMIN"
+        ? supabase.from("Project").delete().eq("id", project.id)
+        : supabase.from("Project").delete().eq("id", project.id).eq("userId", user.id);
     const { error: deleteError } = await withSupabaseTimeout(deleteQuery);
     if (deleteError) throw deleteError;
 
@@ -92,12 +93,15 @@ export async function POST(
   }
 
   try {
-    const projectQuery = supabase
-      .from("Project")
-      .select("*, messages:Message(*), assets:Asset(*)")
-      .eq("id", id)
-      .eq("userId", user.id)
-      .maybeSingle();
+    const projectQuery =
+      user.role === "ADMIN"
+        ? supabase.from("Project").select("*, messages:Message(*), assets:Asset(*)").eq("id", id).maybeSingle()
+        : supabase
+            .from("Project")
+            .select("*, messages:Message(*), assets:Asset(*)")
+            .eq("id", id)
+            .eq("userId", user.id)
+            .maybeSingle();
     const { data: project, error: projectError } = await withSupabaseTimeout(projectQuery);
     if (projectError) throw projectError;
 

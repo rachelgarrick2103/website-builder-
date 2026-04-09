@@ -29,9 +29,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const { id } = await context.params;
     let project: { id: string } | null = null;
     try {
-      const { data, error } = await withSupabaseTimeout(
-        supabase.from("Project").select("id").eq("id", id).eq("userId", user.id).maybeSingle(),
-      );
+      const projectLookupQuery =
+        user.role === "ADMIN"
+          ? supabase.from("Project").select("id").eq("id", id).maybeSingle()
+          : supabase.from("Project").select("id").eq("id", id).eq("userId", user.id).maybeSingle();
+      const { data, error } = await withSupabaseTimeout(projectLookupQuery);
       if (error) throw error;
       project = data ? { id: data.id } : null;
     } catch (error) {

@@ -21,12 +21,15 @@ export default async function VersionsPage({
   const { id } = await params;
   let project: any = null;
   try {
-    const query = supabase
-      .from("Project")
-      .select("*, versions:Version(*)")
-      .eq("id", id)
-      .eq("userId", user.id)
-      .maybeSingle();
+    const query =
+      user.role === "ADMIN"
+        ? supabase.from("Project").select("*, versions:Version(*)").eq("id", id).maybeSingle()
+        : supabase
+            .from("Project")
+            .select("*, versions:Version(*)")
+            .eq("id", id)
+            .eq("userId", user.id)
+            .maybeSingle();
     const { data, error } = await withSupabaseTimeout(query);
     if (error) throw error;
     project = data

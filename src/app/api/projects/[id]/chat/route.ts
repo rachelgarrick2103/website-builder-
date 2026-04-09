@@ -102,7 +102,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         .from("Project")
         .select("*")
         .eq("id", id)
-        .eq("userId", user.id)
+        .eq("userId", user.role === "ADMIN" ? undefined : user.id)
         .maybeSingle(),
     );
     if (projectResult.error) throw projectResult.error;
@@ -212,7 +212,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             updatedAt: new Date().toISOString(),
           })
           .eq("id", project.id)
-          .eq("userId", user.id),
+          .eq("userId", user.role === "ADMIN" ? project.userId : user.id),
       );
       if (updateProjectResult.error) throw updateProjectResult.error;
 
@@ -231,7 +231,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           .from("Project")
           .select("*")
           .eq("id", project.id)
-          .eq("userId", user.id)
+          .eq("userId", user.role === "ADMIN" ? project.userId : user.id)
           .single(),
       );
       if (reloadedProjectResult.error) throw reloadedProjectResult.error;

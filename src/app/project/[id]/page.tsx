@@ -14,7 +14,7 @@ export default async function ProjectPage({ params }: { params: Params }) {
 
   let project: any = null;
   try {
-    project = await getOwnedProject(id, user.id);
+    project = await getOwnedProject(id, user.id, user.role === "ADMIN");
   } catch (error) {
     if (!isSupabaseUnavailableError(error)) {
       throw error;

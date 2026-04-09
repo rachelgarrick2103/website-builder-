@@ -17,7 +17,7 @@ export async function POST(_: Request, { params }: Params) {
   try {
     const user = await requireUser();
     const { id, versionId } = await params;
-    const project = await getOwnedProject(id, user.id);
+    const project = await getOwnedProject(id, user.id, user.role === "ADMIN");
     if (!project) {
       const fallbackProject = await getFallbackProject(user, id);
       if (!fallbackProject) return jsonError("Project not found.", 404);
@@ -66,7 +66,7 @@ export async function POST(_: Request, { params }: Params) {
           updatedAt: new Date().toISOString(),
         })
         .eq("id", project.id)
-        .eq("userId", user.id),
+        .eq("userId", user.role === "ADMIN" ? project.userId : user.id),
     );
     if (projectUpdateError) throw projectUpdateError;
 

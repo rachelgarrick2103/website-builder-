@@ -20,7 +20,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const deployedUrl = `${baseUrl()}/site/`;
 
   try {
-    const project = await getOwnedProject(id, user.id);
+    const project = await getOwnedProject(id, user.id, user.role === "ADMIN");
     if (!project) {
       return jsonError("Project not found.", 404);
     }
@@ -33,7 +33,8 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
         supabase
           .from("Project")
           .update({ status: ProjectStatus.PUBLISHING, updatedAt: new Date().toISOString() })
-          .eq("id", project.id),
+          .eq("id", project.id)
+          .eq("userId", user.role === "ADMIN" ? project.userId : user.id),
       );
       if (error) throw error;
     }
@@ -51,6 +52,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
           updatedAt: new Date().toISOString(),
         })
         .eq("id", project.id)
+        .eq("userId", user.role === "ADMIN" ? project.userId : user.id)
         .select("*")
         .single(),
     );

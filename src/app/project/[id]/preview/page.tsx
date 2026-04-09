@@ -10,12 +10,19 @@ export default async function ProjectPreviewPage({ params }: { params: Promise<{
 
   let project: any = null;
   try {
-    const query = supabase
-      .from("Project")
-      .select("*")
-      .eq("id", id)
-      .eq("userId", user.id)
-      .maybeSingle();
+    const query =
+      user.role === "ADMIN"
+        ? supabase
+            .from("Project")
+            .select("*")
+            .eq("id", id)
+            .maybeSingle()
+        : supabase
+            .from("Project")
+            .select("*")
+            .eq("id", id)
+            .eq("userId", user.id)
+            .maybeSingle();
     const { data, error } = await withSupabaseTimeout(query);
     if (error) throw error;
     project = data;

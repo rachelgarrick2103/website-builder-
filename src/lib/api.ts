@@ -5,16 +5,28 @@ export function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
-export async function getOwnedProject(projectId: string, userId: string) {
-  const query = supabase
+export async function getOwnedProject(projectId: string, userId: string, isAdmin = false) {
+  const baseQuery = supabase
     .from("Project")
     .select("*, messages:Message(*), assets:Asset(*), versions:Version(*)")
-    .eq("id", projectId)
-    .eq("userId", userId)
-    .maybeSingle();
+    .eq("id", projectId);
 
-  const { data, error } = await withSupabaseTimeout(query);
-  if (error) throw error;
+  const ownProjectQuery = baseQuery.eq("userId", userId).maybeSingle();
+  const ownProjectResult = await withSupabaseTimeout(ownProjectQuery);
+  if (ownProjectResult.error) throw ownProjectResult.error;
+
+  let data = ownProjectResult.data;
+  if (!data && isAdmin) {
+    // Admin can recover/access legacy projects created under previous auth IDs.
+    const adminFallbackQuery = supabase
+      .from("Project")
+      .select("*, messages:Message(*), assets:Asset(*), versions:Version(*)")
+      .eq("id", projectId)
+      .maybeSingle();
+    const adminFallbackResult = await withSupabaseTimeout(adminFallbackQuery);
+    if (adminFallbackResult.error) throw adminFallbackResult.error;
+    data = adminFallbackResult.data;
+  }
   if (!data) return null;
 
   const messages = Array.isArray(data.messages)

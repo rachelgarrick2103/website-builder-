@@ -26,7 +26,7 @@ export async function POST(
   }
 
   try {
-    const project = await getOwnedProject(id, user.id);
+    const project = await getOwnedProject(id, user.id, user.role === "ADMIN");
     if (!project) {
       const fallbackProject = await getFallbackProject(user, id);
       if (!fallbackProject) {
@@ -54,7 +54,7 @@ export async function POST(
           hasUnpublishedChanges: project.status === ProjectStatus.LIVE,
         })
         .eq("id", project.id)
-        .eq("userId", user.id),
+        .eq("userId", user.role === "ADMIN" ? project.userId : user.id),
     );
     if (error) throw error;
 
