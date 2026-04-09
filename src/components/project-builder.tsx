@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, RefreshCw, Save, Smartphone, Monitor, UploadCloud } from "lucide-react";
-import type { MessageRole, ProjectStatus } from "@prisma/client";
 import { getPublicAppBaseUrl } from "@/lib/url";
+import type { MessageRole, ProjectStatus } from "@/lib/types";
 
 type Message = {
   id: string;
@@ -40,6 +40,57 @@ type Props = {
 
 type DeviceMode = "desktop" | "mobile";
 
+const QUICK_ACTION_ROWS = [
+  [
+    "Build my hero section",
+    "I want a dark luxury look",
+    "I want soft and feminine",
+    "I want bold and editorial",
+  ],
+  [
+    "Add my services and prices",
+    "Write my about section",
+    "Add a gallery section",
+    "Set up my booking section",
+  ],
+  [
+    "Make it more premium",
+    "Change the colours",
+    "Make the headline bolder",
+    "Add my Instagram handle",
+  ],
+];
+
+function assemblePreviewDocumentFromSections(
+  sections: Record<string, string | undefined>,
+  css: string,
+  js: string,
+) {
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>${css}</style>
+</head>
+<body>${Object.values(sections).filter(Boolean).join("")}<script>${js}</script></body>
+</html>`;
+}
+
+function extractSectionsFromHtml(html: string) {
+  const keys = ["hero", "about", "services", "gallery", "booking", "contact"];
+  const sections: Record<string, string | undefined> = {};
+  for (const key of keys) {
+    const regex = new RegExp(`<section[^>]*id=["']${key}["'][^>]*>[\\s\\S]*?<\\/section>`, "i");
+    const match = html.match(regex);
+    if (match?.[0]) {
+      sections[key] = match[0];
+    }
+  }
+  return sections;
+}
+
 function statusCopy(status: ProjectStatus, hasUnpublished: boolean) {
   if (status === "PUBLISHING") return "Publishing";
   if (status === "LIVE" && hasUnpublished) return "Update available";
@@ -62,11 +113,21 @@ export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
   const [autosaveStatus, setAutosaveStatus] = useState<"idle" | "saving" | "saved">("idle");
 
   useEffect(() => {
-    sessionStorage.setItem(`fallback_project_${project.id}`, JSON.stringify(project));
+    const serialized = JSON.stringify(project);
+    sessionStorage.setItem(`fallback_project_${project.id}`, serialized);
+    try {
+      localStorage.setItem(`fallback_project_${project.id}`, serialized);
+    } catch {
+      // Ignore storage quota or disabled localStorage failures.
+    }
   }, [project]);
 
   const refreshPreview = useCallback(() => {
-    const doc = `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><style>${project.currentCodeCss}</style></head><body>${project.currentCodeHtml}<script>${project.currentCodeJs}</script></body></html>`;
+    const sections = extractSectionsFromHtml(project.currentCodeHtml);
+    const hasSections = Object.keys(sections).length > 0;
+    const doc = hasSections
+      ? assemblePreviewDocumentFromSections(sections, project.currentCodeCss, project.currentCodeJs)
+      : `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><style>${project.currentCodeCss}</style></head><body>${project.currentCodeHtml}<script>${project.currentCodeJs}</script></body></html>`;
     setPreviewDoc(doc);
   }, [project.currentCodeCss, project.currentCodeHtml, project.currentCodeJs]);
 
@@ -118,14 +179,12 @@ export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
     return () => window.clearTimeout(timeout);
   }, [dirty, persistProject]);
 
-  async function sendMessage(e: React.FormEvent) {
-    e.preventDefault();
-    const content = input.trim();
+  async function dispatchMessage(content: string) {
     if (!content || busy) return;
 
     setBusy(true);
     setError("");
-    setInput("");
+    setInput((current) => (current.trim() === content ? "" : current));
 
     try {
       const res = await fetch(`/api/projects/${project.id}/chat`, {
@@ -136,6 +195,7 @@ export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
       const data = (await res.json()) as {
         error?: string;
         project?: BuilderProject;
+        previewDoc?: string | null;
       };
 
       if (!res.ok || !data.project) {
@@ -143,6 +203,9 @@ export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
         return;
       }
 
+      if (data.previewDoc) {
+        setPreviewDoc(data.previewDoc);
+      }
       setProject(data.project);
       setMessages(data.project.messages);
       setDirty(true);
@@ -151,6 +214,17 @@ export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function sendMessage(e: React.FormEvent) {
+    e.preventDefault();
+    await dispatchMessage(input.trim());
+  }
+
+  async function sendQuickAction(promptText: string) {
+    if (busy) return;
+    setInput(promptText);
+    await dispatchMessage(promptText);
   }
 
   async function saveProject() {
@@ -322,6 +396,26 @@ export function ProjectBuilder({ initialProject, initialPreviewDoc }: Props) {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
               />
+              <div className="space-y-2">
+                {QUICK_ACTION_ROWS.map((row, rowIndex) => (
+                  <div key={`quick-row-${rowIndex}`} className="flex flex-wrap gap-2">
+                    {row.map((label) => (
+                      <button
+                        key={label}
+                        type="button"
+                        className="btn-secondary text-xs"
+                        disabled={busy}
+                        onClick={() => {
+                          setInput(label);
+                          void sendQuickAction(label);
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="btn-secondary cursor-pointer">
                   <UploadCloud className="mr-2 h-4 w-4" />

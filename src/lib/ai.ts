@@ -1,6 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { TemplateType } from "@prisma/client";
-import type { StructuredProjectData } from "@/lib/types";
+import { TemplateType, type StructuredProjectData } from "@/lib/types";
 import { applyConversationEdit, buildInitialWebsite } from "@/lib/templates";
 
 type InitialGenerationInput = {
@@ -30,6 +29,7 @@ type AgentResult = {
   js: string;
   assistantReply: string;
   structuredData: StructuredProjectData;
+  sections?: Record<string, string>;
 };
 
 const DEFAULT_SYSTEM_PROMPT =
@@ -126,7 +126,7 @@ function mergeStructuredDataFromSiteData(
 }
 
 function sanitizeAgentResult(payload: Record<string, unknown>, fallback: AgentResult): AgentResult {
-  const sections =
+  const sectionPayload =
     typeof payload.sections === "object" && payload.sections
       ? (payload.sections as Record<string, unknown>)
       : null;
@@ -134,7 +134,14 @@ function sanitizeAgentResult(payload: Record<string, unknown>, fallback: AgentRe
     typeof payload.siteData === "object" && payload.siteData
       ? (payload.siteData as Record<string, unknown>)
       : null;
-  const responseSectionsHtml = sections ? htmlFromSections(sections) : "";
+  const normalizedSections = sectionPayload
+    ? Object.fromEntries(
+        Object.entries(sectionPayload)
+          .filter(([, value]) => typeof value === "string")
+          .map(([key, value]) => [key, value as string]),
+      )
+    : undefined;
+  const responseSectionsHtml = normalizedSections ? htmlFromSections(normalizedSections) : "";
   const html = typeof payload.html === "string" && payload.html.length > 20
     ? payload.html
     : responseSectionsHtml.length > 20
@@ -159,7 +166,7 @@ function sanitizeAgentResult(payload: Record<string, unknown>, fallback: AgentRe
     structuredData = mergeStructuredDataFromSiteData(structuredData, siteData);
   }
 
-  return { html, css, js, assistantReply, structuredData };
+  return { html, css, js, assistantReply, structuredData, sections: normalizedSections };
 }
 
 export async function generateInitialSite(input: InitialGenerationInput): Promise<AgentResult> {
@@ -178,7 +185,7 @@ export async function generateInitialSite(input: InitialGenerationInput): Promis
 
   try {
     const response = await client.messages.create({
-      model: "claude-3-7-sonnet-latest",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 4096,
       system: input.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
       messages: [
@@ -246,7 +253,7 @@ export async function editExistingSite(input: ExistingSiteInput): Promise<AgentR
 
   try {
     const response = await client.messages.create({
-      model: "claude-3-7-sonnet-latest",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 4096,
       system: input.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
       messages: [

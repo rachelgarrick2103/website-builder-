@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { generateInitialSite } from "@/lib/ai";
-import { isDatabaseUnavailableError } from "@/lib/db";
 import { createFallbackProject } from "@/lib/fallback-store";
 import {
   createDefaultStructuredData,
@@ -13,6 +11,7 @@ import {
   labelToTemplate,
 } from "@/lib/project-data";
 import { mapFallbackProjectToApi } from "@/lib/fallback-store";
+import { supabase, withSupabaseTimeout } from "@/lib/supabase";
 
 const schema = z.object({
   name: z.string().min(2).max(80),
@@ -52,7 +51,7 @@ export async function POST(request: Request) {
     const baseStructuredData = createDefaultStructuredData({
       brandName: parsed.data.name,
       businessType,
-      websiteGoal
+      websiteGoal,
     });
     const structuredData = extractStructuredUpdatesFromMessage(baseStructuredData, parsed.data.prompt);
     const initialSite = await generateInitialSite({
@@ -67,8 +66,10 @@ export async function POST(request: Request) {
     let projectId: string;
     let fallbackProject: ReturnType<typeof mapFallbackProjectToApi> | null = null;
     try {
-      const project = await db.project.create({
-        data: {
+      const newProjectId = crypto.randomUUID();
+      const { error: projectError } = await withSupabaseTimeout(
+        supabase.from("Project").insert({
+          id: newProjectId,
           userId: user.id,
           name: parsed.data.name.trim(),
           slug,
@@ -79,35 +80,43 @@ export async function POST(request: Request) {
           currentCodeHtml: initialSite.html,
           currentCodeCss: initialSite.css,
           currentCodeJs: initialSite.js,
-          messages: {
-            create: [
-              {
-                role: "USER",
-                content: parsed.data.prompt.trim(),
-              },
-              {
-                role: "ASSISTANT",
-                content: initialSite.assistantReply,
-              },
-            ],
+        }),
+      );
+      if (projectError) throw projectError;
+
+      const { error: messagesError } = await withSupabaseTimeout(
+        supabase.from("Message").insert([
+          {
+            id: crypto.randomUUID(),
+            projectId: newProjectId,
+            role: "USER",
+            content: parsed.data.prompt.trim(),
           },
-          versions: {
-            create: {
-              label: "Initial draft",
-              html: initialSite.html,
-              css: initialSite.css,
-              js: initialSite.js,
-              structuredData: initialSite.structuredData,
-            },
+          {
+            id: crypto.randomUUID(),
+            projectId: newProjectId,
+            role: "ASSISTANT",
+            content: initialSite.assistantReply,
           },
-        },
-        select: { id: true },
-      });
-      projectId = project.id;
+        ]),
+      );
+      if (messagesError) throw messagesError;
+
+      const { error: versionError } = await withSupabaseTimeout(
+        supabase.from("Version").insert({
+          id: crypto.randomUUID(),
+          projectId: newProjectId,
+          label: "Initial draft",
+          html: initialSite.html,
+          css: initialSite.css,
+          js: initialSite.js,
+          structuredData: initialSite.structuredData,
+        }),
+      );
+      if (versionError) throw versionError;
+
+      projectId = newProjectId;
     } catch (error) {
-      if (!isDatabaseUnavailableError(error)) {
-        throw error;
-      }
       const fallback = await createFallbackProject({
         user,
         name: parsed.data.name.trim(),

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
-import { db } from "@/lib/db";
 import { getFallbackProject, saveFallbackProject } from "@/lib/fallback-store";
 import { getOwnedProject, jsonError } from "@/lib/api";
-import { isDatabaseUnavailableError } from "@/lib/db";
+import { ProjectStatus } from "@/lib/types";
+import { supabase, withSupabaseTimeout } from "@/lib/supabase";
 
 const schema = z.object({
   html: z.string(),
@@ -28,24 +28,6 @@ export async function POST(
   try {
     const project = await getOwnedProject(id, user.id);
     if (!project) {
-      return jsonError("Project not found.", 404);
-    }
-
-    await db.project.update({
-      where: { id: project.id },
-      data: {
-        currentCodeHtml: parsed.data.html,
-        currentCodeCss: parsed.data.css,
-        currentCodeJs: parsed.data.js,
-        structuredData: parsed.data.structuredData,
-        updatedAt: new Date(),
-        hasUnpublishedChanges: project.status === "LIVE",
-      },
-    });
-
-    return NextResponse.json({ ok: true, message: "Saving your project" });
-  } catch (error) {
-    if (isDatabaseUnavailableError(error)) {
       const fallbackProject = await getFallbackProject(user, id);
       if (!fallbackProject) {
         return jsonError("Project not found.", 404);
@@ -55,11 +37,41 @@ export async function POST(
       fallbackProject.currentCodeJs = parsed.data.js;
       fallbackProject.structuredData = parsed.data.structuredData as typeof fallbackProject.structuredData;
       fallbackProject.updatedAt = new Date();
-      fallbackProject.hasUnpublishedChanges = fallbackProject.status === "LIVE";
+      fallbackProject.hasUnpublishedChanges = fallbackProject.status === ProjectStatus.LIVE;
       await saveFallbackProject(user, fallbackProject);
       return NextResponse.json({ ok: true, message: "Saving your project" });
     }
-    console.error("save route error", error);
-    return jsonError("Unable to save project right now.", 500);
+
+    const { error } = await withSupabaseTimeout(
+      supabase
+        .from("Project")
+        .update({
+          currentCodeHtml: parsed.data.html,
+          currentCodeCss: parsed.data.css,
+          currentCodeJs: parsed.data.js,
+          structuredData: parsed.data.structuredData,
+          updatedAt: new Date().toISOString(),
+          hasUnpublishedChanges: project.status === ProjectStatus.LIVE,
+        })
+        .eq("id", project.id)
+        .eq("userId", user.id),
+    );
+    if (error) throw error;
+
+    return NextResponse.json({ ok: true, message: "Saving your project" });
+  } catch (error) {
+    const fallbackProject = await getFallbackProject(user, id);
+    if (!fallbackProject) {
+      console.error("save route error", error);
+      return jsonError("Unable to save project right now.", 500);
+    }
+    fallbackProject.currentCodeHtml = parsed.data.html;
+    fallbackProject.currentCodeCss = parsed.data.css;
+    fallbackProject.currentCodeJs = parsed.data.js;
+    fallbackProject.structuredData = parsed.data.structuredData as typeof fallbackProject.structuredData;
+    fallbackProject.updatedAt = new Date();
+    fallbackProject.hasUnpublishedChanges = fallbackProject.status === ProjectStatus.LIVE;
+    await saveFallbackProject(user, fallbackProject);
+    return NextResponse.json({ ok: true, message: "Saving your project" });
   }
 }

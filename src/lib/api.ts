@@ -1,49 +1,49 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { supabase, withSupabaseTimeout } from "@/lib/supabase";
 
 export function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
-export function shouldUseFallbackMode(request?: Request) {
-  if (!request) return false;
-  return request.headers.get("x-psc-fallback-mode") === "1";
-}
-
 export async function getOwnedProject(projectId: string, userId: string) {
-  return db.project.findFirst({
-    where: {
-      id: projectId,
-      userId,
-    },
-    include: {
-      messages: {
-        orderBy: { createdAt: "asc" },
-      },
-      assets: {
-        orderBy: { createdAt: "desc" },
-      },
-      versions: {
-        orderBy: { createdAt: "desc" },
-      },
-    },
-  });
+  const query = supabase
+    .from("Project")
+    .select("*, messages:Message(*), assets:Asset(*), versions:Version(*)")
+    .eq("id", projectId)
+    .eq("userId", userId)
+    .maybeSingle();
+
+  const { data, error } = await withSupabaseTimeout(query);
+  if (error) throw error;
+  if (!data) return null;
+
+  const messages = Array.isArray(data.messages)
+    ? [...data.messages].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    : [];
+  const assets = Array.isArray(data.assets)
+    ? [...data.assets].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    : [];
+  const versions = Array.isArray(data.versions)
+    ? [...data.versions].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    : [];
+
+  return {
+    ...data,
+    messages,
+    assets,
+    versions,
+  };
 }
 
 export function buildPreviewDocument(html: string, css: string, js: string) {
-  return `<!doctype html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
   <style>${css}</style>
 </head>
-<body>
-${html}
-<script>${js}</script>
-</body>
+<body>${html}<script>${js}</script></body>
 </html>`;
 }

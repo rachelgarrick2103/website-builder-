@@ -1,150 +1,84 @@
 import { randomUUID } from "crypto";
-import { MessageRole } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { editExistingSite, generateInitialSite } from "@/lib/ai";
-import { db } from "@/lib/db";
 import { getFallbackProject, saveFallbackProject } from "@/lib/fallback-store";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { extractStructuredUpdatesFromMessage } from "@/lib/project-data";
 import { jsonError } from "@/lib/api";
-import { isDatabaseUnavailableError } from "@/lib/db";
-import type { StructuredProjectData } from "@/lib/types";
+import { MessageRole, type StructuredProjectData } from "@/lib/types";
+import { isSupabaseUnavailableError, supabase, withSupabaseTimeout } from "@/lib/supabase";
 
 const schema = z.object({
   message: z.string().min(1).max(4000),
 });
 
-const PSC_AGENT_SYSTEM_PROMPT = `You are PSC Agent — the AI website builder built 
-exclusively for PSC Lash Academy's 180 Degree 
-Programme students. You build beautiful, professional 
-lash business websites through conversation.
+const PSC_AGENT_SYSTEM_PROMPT = `You are PSC Agent — the AI website builder 
+for PSC Lash Academy's 180 Degree Programme.
+You build beautiful professional lash business 
+websites through conversation.
 
-IDENTITY RULES — never break these:
-- You are PSC Agent. Never mention Claude, AI, 
-  Vercel, Anthropic, or any third party tool
-- You sound like a knowledgeable, warm PSC team member
-- Keep messages concise and action-focused
-- When you have enough info to build something, 
-  build it immediately — do not ask permission
+NEVER mention Claude, AI, Anthropic, or any 
+tool. You are PSC Agent only.
 
-WHAT YOU CAN BUILD:
-Students have complete creative freedom. You match 
-their vision — their colours, their fonts, their 
-aesthetic. Ask them what they want and build it.
+When building websites you have complete 
+creative freedom. Match the student's vision — 
+their colours, their fonts, their aesthetic.
 
-When a student does not specify a style, ask them:
+Ask them:
 - What colours feel like their brand?
-- Do they want something bold, soft, minimal, 
-  maximalist, dark, light, colourful, neutral?
-- Can they share any websites or brands they love 
-  the look of?
-- Do they have a logo or brand colours already?
+- What mood — bold, soft, minimal, luxurious?
+- Do they have inspiration websites they love?
 
-DESIGN CAPABILITIES:
-You can build websites in any style including:
-- Bold editorial black and white
-- Soft feminine neutrals and blush tones
-- Rich dark luxury — deep black, navy, burgundy
-- Fresh minimal — lots of white space and clean lines
-- Warm earthy tones — terracotta, sage, cream
-- Full colour — bright, vibrant, expressive
-- Glam and maximalist — gold accents, rich textures
-- Clean corporate — structured, professional, crisp
-- Romantic and soft — florals, pastels, elegant curves
-- Modern Y2K — bold colours, fun typography
+Build sections progressively as you learn 
+about their business. Start with the hero 
+section as soon as you know their business 
+name and aesthetic direction.
 
-TECHNICAL RULES — always follow these regardless of style:
-- Mobile responsive — every section must work on 390px
-- Load Google Fonts inline in a style tag at the 
-  top of each section
-- Use web-safe Google Fonts — choose fonts that 
-  match the student's aesthetic. Suggestions:
-  Bold/editorial: Bebas Neue, Oswald, Anton
-  Elegant/luxury: Playfair Display, Cormorant Garamond
-  Modern/clean: DM Sans, Plus Jakarta Sans, Outfit
-  Soft/feminine: Lora, Libre Baskerville, Raleway
-  Friendly/warm: Nunito, Poppins, Quicksand
-- Images: use CSS gradients or solid colour 
-  placeholders with instructions like 
-  "Replace with your photo here"
-- Each section must have an id: hero, about, 
-  services, gallery, booking, contact
-- No broken layouts — test mentally that every 
-  element is positioned correctly
-
-WHAT MAKES A GREAT LASH BUSINESS WEBSITE:
-Hero: Immediately communicates who she is and 
-who she serves. Strong headline. Clear CTA to book.
-
-About: Her story, her approach, why she is different. 
-Personal and warm — not a CV.
-
-Services: Clear names and prices. Easy to scan. 
-No confusion about what is included.
-
-Gallery: Her best work. Clean grid. Lets the 
-lashes speak for themselves.
-
-Booking: One clear button or embedded calendar. 
-Zero friction.
-
-Contact: How to reach her. Instagram. Location. 
-Simple and clean.
-
-HOW TO HANDLE INSPIRATION IMAGES:
-When a student uploads images of websites they love, 
-analyse the aesthetic carefully:
-- What colours are dominant?
-- What fonts are being used?
-- Is the layout dense or spacious?
-- What is the overall mood — luxury, playful, 
-  minimal, bold?
-Then build something that captures that same energy 
-for their lash business. Tell them what you noticed 
-and what you are incorporating.
-
-HOW TO HANDLE THEIR LASH WORK PHOTOS:
-When they upload photos of their lash work, 
-acknowledge the quality and style of the work 
-and incorporate those images into the gallery 
-and hero sections.
-
-RESPONSE FORMAT — always respond with JSON 
+RESPONSE FORMAT — always return valid JSON 
 inside <response> tags:
-
 <response>
 {
-  "message": "Your conversational response",
+  "message": "your conversational response",
+  "sections": {
+    "hero": "complete HTML string if building",
+    "about": "complete HTML string if building",
+    "services": "complete HTML string if building",
+    "gallery": "complete HTML string if building",
+    "booking": "complete HTML string if building",
+    "contact": "complete HTML string if building"
+  },
   "siteData": {
     "bizName": "if mentioned",
-    "ownerName": "if mentioned", 
+    "ownerName": "if mentioned",
     "location": "if mentioned",
-    "positioning": "if mentioned",
     "services": [],
     "instagram": "if mentioned",
     "bookingLink": "if mentioned",
-    "brandColours": "if mentioned or chosen",
+    "brandColours": "if decided",
     "fontStyle": "if decided"
-  },
-  "sections": {
-    "hero": "complete HTML if building or updating",
-    "about": "complete HTML if building or updating",
-    "services": "complete HTML if building or updating",
-    "gallery": "complete HTML if building or updating",
-    "booking": "complete HTML if building or updating",
-    "contact": "complete HTML if building or updating"
   }
 }
 </response>
 
-Only include sections you are actually generating.
-Only include siteData fields mentioned in this message.
-Build immediately when you have enough information.
-The first section to build is always the hero — 
-do this as soon as you know the business name 
-and get any sense of their aesthetic.`;
+Only include sections you are actually building.
+Build immediately when you have enough info.
+Make websites that are genuinely beautiful —
+not generic AI output.`;
+
+function buildSectionsPreviewDoc(sections: Record<string, string>, css: string, js: string) {
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>${css}</style>
+</head>
+<body>${Object.values(sections).join("")}<script>${js}</script></body>
+</html>`;
+}
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
@@ -158,16 +92,23 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   const { id } = await context.params;
-  let project = null as Awaited<ReturnType<typeof db.project.findFirst>> | null;
-  let fallbackProject = null as ReturnType<typeof getFallbackProject>;
+  let project: any = null;
+  let fallbackProject = null as Awaited<ReturnType<typeof getFallbackProject>>;
   let usingFallback = false;
+
   try {
-    project = await db.project.findFirst({
-      where: { id, userId: user.id },
-      include: { assets: true },
-    });
+    const projectResult = await withSupabaseTimeout(
+      supabase
+        .from("Project")
+        .select("*")
+        .eq("id", id)
+        .eq("userId", user.id)
+        .maybeSingle(),
+    );
+    if (projectResult.error) throw projectResult.error;
+    project = projectResult.data;
   } catch (error) {
-    if (!isDatabaseUnavailableError(error)) {
+    if (!isSupabaseUnavailableError(error)) {
       throw error;
     }
     usingFallback = true;
@@ -185,13 +126,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   if (project) {
-    await db.message.create({
-      data: {
+    const saveUserMessageResult = await withSupabaseTimeout(
+      supabase.from("Message").insert({
+        id: randomUUID(),
         projectId: project.id,
         role: MessageRole.USER,
         content: parsed.data.message,
-      },
-    });
+      }),
+    );
+    if (saveUserMessageResult.error) throw saveUserMessageResult.error;
   } else if (fallbackProject) {
     fallbackProject.messages.push({
       id: randomUUID(),
@@ -207,9 +150,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const structuredData = extractStructuredUpdatesFromMessage(sourceStructuredData, parsed.data.message);
   const anthropicKey = process.env.ANTHROPIC_KEY;
 
-  const assetUrls = project
-    ? (project as { assets?: Array<{ fileUrl: string }> }).assets?.map((asset) => asset.fileUrl) ?? []
-    : fallbackProject!.assets.map((asset) => asset.fileUrl);
+  const assetUrls = fallbackProject?.assets.map((asset) => asset.fileUrl) ?? [];
+  if (project) {
+    const projectAssetsResult = await withSupabaseTimeout(
+      supabase.from("Asset").select("fileUrl").eq("projectId", project.id),
+    );
+    if (!projectAssetsResult.error) {
+      const dbAssetUrls = ((projectAssetsResult.data ?? []) as Array<{ fileUrl?: string }>)
+        .map((asset) => asset.fileUrl)
+        .filter((value): value is string => typeof value === "string");
+      if (dbAssetUrls.length) {
+        assetUrls.splice(0, assetUrls.length, ...dbAssetUrls);
+      }
+    }
+  }
+
   const generated =
     (project ? project.currentCodeHtml : fallbackProject!.currentCodeHtml).trim().length === 0
       ? await generateInitialSite({
@@ -233,34 +188,66 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         });
 
   let updatedProject: any = null;
+  let previewDoc: string | null = null;
+
+  if (generated.sections && Object.keys(generated.sections).length > 0) {
+    previewDoc = buildSectionsPreviewDoc(generated.sections, generated.css, generated.js);
+  }
+
   if (project && !usingFallback) {
-    await db.$transaction(async (tx) => {
-      await tx.project.update({
-        where: { id: project.id },
-        data: {
+    const updateProjectResult = await withSupabaseTimeout(
+      supabase
+        .from("Project")
+        .update({
           currentCodeHtml: generated.html,
           currentCodeCss: generated.css,
           currentCodeJs: generated.js,
           structuredData: generated.structuredData,
           hasUnpublishedChanges: project.status === "LIVE",
-        },
-      });
-      await tx.message.create({
-        data: {
-          projectId: project.id,
-          role: MessageRole.ASSISTANT,
-          content: generated.assistantReply,
-        },
-      });
-    });
+          updatedAt: new Date().toISOString(),
+        })
+        .eq("id", project.id)
+        .eq("userId", user.id),
+    );
+    if (updateProjectResult.error) throw updateProjectResult.error;
 
-    updatedProject = await db.project.findFirst({
-      where: { id: project.id, userId: user.id },
-      include: {
-        messages: { orderBy: { createdAt: "asc" } },
-        assets: { orderBy: { createdAt: "desc" } },
-      },
-    });
+    const assistantMessageResult = await withSupabaseTimeout(
+      supabase.from("Message").insert({
+        id: randomUUID(),
+        projectId: project.id,
+        role: MessageRole.ASSISTANT,
+        content: generated.assistantReply,
+      }),
+    );
+    if (assistantMessageResult.error) throw assistantMessageResult.error;
+
+    const reloadedProjectResult = await withSupabaseTimeout(
+      supabase
+        .from("Project")
+        .select("*")
+        .eq("id", project.id)
+        .eq("userId", user.id)
+        .single(),
+    );
+    if (reloadedProjectResult.error) throw reloadedProjectResult.error;
+
+    const [messagesResult, assetsResult] = await Promise.all([
+      withSupabaseTimeout(
+        supabase.from("Message").select("*").eq("projectId", project.id).order("createdAt", { ascending: true }),
+      ),
+      withSupabaseTimeout(
+        supabase.from("Asset").select("*").eq("projectId", project.id).order("createdAt", { ascending: false }),
+      ),
+    ]);
+    if (messagesResult.error) throw messagesResult.error;
+    if (assetsResult.error) throw assetsResult.error;
+
+    updatedProject = {
+      ...reloadedProjectResult.data,
+      messages: messagesResult.data ?? [],
+      assets: assetsResult.data ?? [],
+      versions: [],
+    };
   } else if (fallbackProject) {
     fallbackProject.currentCodeHtml = generated.html;
     fallbackProject.currentCodeCss = generated.css;
@@ -280,5 +267,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   return NextResponse.json({
     project: updatedProject,
+    sections: generated.sections ?? {},
+    previewDoc,
   });
 }

@@ -57,7 +57,13 @@ export function CreateProjectModal({ onCreated }: Props) {
         return;
       }
       if (data.fallbackProject) {
-        sessionStorage.setItem(`fallback_project_${data.projectId}`, JSON.stringify(data.fallbackProject));
+        const serialized = JSON.stringify(data.fallbackProject);
+        sessionStorage.setItem(`fallback_project_${data.projectId}`, serialized);
+        try {
+          localStorage.setItem(`fallback_project_${data.projectId}`, serialized);
+        } catch {
+          // Ignore storage quota or disabled localStorage failures.
+        }
       }
       setOpen(false);
       onCreated?.();

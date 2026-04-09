@@ -6,9 +6,8 @@ import {
   getFallbackProject,
   saveFallbackProject,
 } from "@/lib/fallback-store";
-import { db } from "@/lib/db";
 import { jsonError } from "@/lib/api";
-import { isDatabaseUnavailableError } from "@/lib/db";
+import { isSupabaseUnavailableError, supabase, withSupabaseTimeout } from "@/lib/supabase";
 
 const allowedTypes = new Set([
   "image/jpeg",
@@ -28,23 +27,25 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const user = await requireUser();
     const { id } = await context.params;
-    let useFallback = false;
     let project: { id: string } | null = null;
     try {
-      project = await db.project.findFirst({
-        where: { id, userId: user.sid },
-        select: { id: true },
-      });
+      const { data, error } = await withSupabaseTimeout(
+        supabase.from("Project").select("id").eq("id", id).eq("userId", user.id).maybeSingle(),
+      );
+      if (error) throw error;
+      project = data ? { id: data.id } : null;
     } catch (error) {
-      if (!isDatabaseUnavailableError(error)) {
+      if (!isSupabaseUnavailableError(error)) {
         throw error;
       }
-      useFallback = true;
-      project = await getFallbackProject(user, id);
     }
 
     if (!project) {
-      return jsonError("Project not found.", 404);
+      const fallback = await getFallbackProject(user, id);
+      if (!fallback) {
+        return jsonError("Project not found.", 404);
+      }
+      project = { id: fallback.id };
     }
 
     const formData = await request.formData();
@@ -77,31 +78,34 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       fileUrl = `data:${file.type};base64,${base64}`;
     }
 
-    if (useFallback) {
+    const insertQuery = supabase
+      .from("Asset")
+      .insert({
+        projectId: project.id,
+        userId: user.id,
+        fileUrl,
+        fileType: file.type,
+        originalName: file.name,
+      })
+      .select("*")
+      .single();
+
+    const { data: asset, error: insertError } = await withSupabaseTimeout(insertQuery);
+    if (insertError || !asset) {
       const fallbackProject = await getFallbackProject(user, id);
       if (!fallbackProject) {
-        return jsonError("Project not found.", 404);
+        throw insertError ?? new Error("Unable to persist uploaded asset.");
       }
-      const asset = createFallbackAsset({
+      const fallbackAsset = createFallbackAsset({
         fileUrl,
         fileType: file.type,
         originalName: file.name,
       });
-      fallbackProject.assets = [asset, ...fallbackProject.assets];
+      fallbackProject.assets = [fallbackAsset, ...fallbackProject.assets];
       fallbackProject.updatedAt = new Date();
       await saveFallbackProject(user, fallbackProject);
-      return NextResponse.json({ asset }, { status: 201 });
+      return NextResponse.json({ asset: fallbackAsset }, { status: 201 });
     }
-
-    const asset = await db.asset.create({
-      data: {
-        projectId: project.id,
-        userId: user.sid,
-        fileUrl,
-        fileType: file.type,
-        originalName: file.name,
-      },
-    });
 
     return NextResponse.json({ asset }, { status: 201 });
   } catch (error) {

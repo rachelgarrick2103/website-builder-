@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { db, isDatabaseUnavailableError } from "@/lib/db";
+import { supabase, withSupabaseTimeout } from "@/lib/supabase";
 import { buildPreviewDocument } from "@/lib/api";
 import { getFallbackProjectBySlug } from "@/lib/fallback-store";
 
@@ -13,19 +13,15 @@ export default async function LiveSitePage({ params }: { params: Promise<{ slug:
   } | null = null;
 
   try {
-    project = await db.project.findUnique({
-      where: { slug },
-      select: {
-        currentCodeHtml: true,
-        currentCodeCss: true,
-        currentCodeJs: true,
-        status: true,
-      },
-    });
+    const query = supabase
+      .from("Project")
+      .select("currentCodeHtml,currentCodeCss,currentCodeJs,status")
+      .eq("slug", slug)
+      .maybeSingle();
+    const { data, error } = await withSupabaseTimeout(query);
+    if (error) throw error;
+    project = data;
   } catch (error) {
-    if (!isDatabaseUnavailableError(error)) {
-      throw error;
-    }
     const fallback = getFallbackProjectBySlug(slug);
     project = fallback
       ? {

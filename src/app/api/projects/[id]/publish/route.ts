@@ -1,15 +1,14 @@
 import { randomUUID } from "crypto";
-import { MessageRole, ProjectStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { MessageRole, ProjectStatus } from "@/lib/types";
 import { getOwnedProject, jsonError } from "@/lib/api";
 import {
   getFallbackProject,
   saveFallbackProject,
 } from "@/lib/fallback-store";
-import { isDatabaseUnavailableError } from "@/lib/db";
 import { getPublicAppBaseUrl } from "@/lib/url";
+import { isSupabaseUnavailableError, supabase, withSupabaseTimeout } from "@/lib/supabase";
 
 function baseUrl() {
   return getPublicAppBaseUrl();
@@ -29,57 +28,68 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       return jsonError("Your site needs content before publishing.");
     }
 
-    await db.project.update({
-      where: { id: project.id },
-      data: { status: ProjectStatus.PUBLISHING },
-    });
+    {
+      const { error } = await withSupabaseTimeout(
+        supabase
+          .from("Project")
+          .update({ status: ProjectStatus.PUBLISHING, updatedAt: new Date().toISOString() })
+          .eq("id", project.id),
+      );
+      if (error) throw error;
+    }
 
     const liveUrl = `${deployedUrl}${project.slug}`;
 
-    const [updated] = await db.$transaction([
-      db.project.update({
-        where: { id: project.id },
-        data: {
+    const { data: updated, error: updateError } = await withSupabaseTimeout(
+      supabase
+        .from("Project")
+        .update({
           status: ProjectStatus.LIVE,
           deployedUrl: liveUrl,
-          publishedAt: new Date(),
+          publishedAt: new Date().toISOString(),
           hasUnpublishedChanges: false,
-        },
+          updatedAt: new Date().toISOString(),
+        })
+        .eq("id", project.id)
+        .select("*")
+        .single(),
+    );
+    if (updateError) throw updateError;
+
+    const { error: messageError } = await withSupabaseTimeout(
+      supabase.from("Message").insert({
+        projectId: project.id,
+        role: MessageRole.SYSTEM,
+        content: "Your website is now live.",
       }),
-      db.message.create({
-        data: {
-          projectId: project.id,
-          role: MessageRole.SYSTEM,
-          content: "Your website is now live.",
-        },
-      }),
-    ]);
+    );
+    if (messageError) throw messageError;
 
     return NextResponse.json({ project: updated });
   } catch (error) {
-    if (isDatabaseUnavailableError(error)) {
-      const project = await getFallbackProject(user, id);
-      if (!project) {
-        return jsonError("Project not found.", 404);
-      }
-      if (!project.currentCodeHtml.trim()) {
-        return jsonError("Your site needs content before publishing.");
-      }
-      project.status = "LIVE";
-      project.hasUnpublishedChanges = false;
-      project.publishedAt = new Date();
-      project.deployedUrl = `${deployedUrl}${project.slug}`;
-      project.messages.push({
-        id: randomUUID(),
-        role: MessageRole.SYSTEM,
-        content: "Your website is now live.",
-        createdAt: new Date(),
-      });
-      project.updatedAt = new Date();
-      await saveFallbackProject(user, project);
-      return NextResponse.json({ project });
+    if (!isSupabaseUnavailableError(error)) {
+      console.error("publish error", error);
+      return jsonError("Publishing failed. Please try again.", 500);
     }
-    console.error("publish error", error);
-    return jsonError("Publishing failed. Please try again.", 500);
+    const project = await getFallbackProject(user, id);
+    if (!project) {
+      return jsonError("Publishing failed. Please try again.", 500);
+    }
+    if (!project.currentCodeHtml.trim()) {
+      return jsonError("Your site needs content before publishing.");
+    }
+    project.status = "LIVE";
+    project.hasUnpublishedChanges = false;
+    project.publishedAt = new Date();
+    project.deployedUrl = `${deployedUrl}${project.slug}`;
+    project.messages.push({
+      id: randomUUID(),
+      role: MessageRole.SYSTEM,
+      content: "Your website is now live.",
+      createdAt: new Date(),
+    });
+    project.updatedAt = new Date();
+    await saveFallbackProject(user, project);
+    return NextResponse.json({ project });
   }
 }

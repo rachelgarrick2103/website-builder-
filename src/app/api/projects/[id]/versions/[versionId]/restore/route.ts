@@ -1,14 +1,13 @@
 import { randomUUID } from "crypto";
-import type { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
-import { db } from "@/lib/db";
 import { getOwnedProject, jsonError } from "@/lib/api";
 import {
   getFallbackProject,
   saveFallbackProject,
 } from "@/lib/fallback-store";
-import { isDatabaseUnavailableError } from "@/lib/db";
+import { MessageRole } from "@/lib/types";
+import { isSupabaseUnavailableError, supabase, withSupabaseTimeout } from "@/lib/supabase";
 
 type Params = {
   params: Promise<{ id: string; versionId: string }>;
@@ -44,33 +43,46 @@ export async function POST(_: Request, { params }: Params) {
       return NextResponse.json({ ok: true });
     }
 
-    const version = await db.version.findFirst({
-      where: { id: versionId, projectId: project.id },
-    });
+    const { data: version, error: versionError } = await withSupabaseTimeout(
+      supabase
+        .from("Version")
+        .select("*")
+        .eq("id", versionId)
+        .eq("projectId", project.id)
+        .maybeSingle(),
+    );
+    if (versionError) throw versionError;
     if (!version) return jsonError("Version not found.", 404);
 
-    await db.project.update({
-      where: { id: project.id },
-      data: {
-        currentCodeHtml: version.html,
-        currentCodeCss: version.css,
-        currentCodeJs: version.js,
-        structuredData: version.structuredData as Prisma.InputJsonValue,
-        hasUnpublishedChanges: true,
-      },
-    });
+    const { error: projectUpdateError } = await withSupabaseTimeout(
+      supabase
+        .from("Project")
+        .update({
+          currentCodeHtml: version.html,
+          currentCodeCss: version.css,
+          currentCodeJs: version.js,
+          structuredData: version.structuredData,
+          hasUnpublishedChanges: true,
+          updatedAt: new Date().toISOString(),
+        })
+        .eq("id", project.id)
+        .eq("userId", user.id),
+    );
+    if (projectUpdateError) throw projectUpdateError;
 
-    await db.message.create({
-      data: {
+    const { error: messageError } = await withSupabaseTimeout(
+      supabase.from("Message").insert({
+        id: randomUUID(),
         projectId: project.id,
-        role: "SYSTEM",
+        role: MessageRole.SYSTEM,
         content: `Restored version: ${version.label}`,
-      },
-    });
+      }),
+    );
+    if (messageError) throw messageError;
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    if (isDatabaseUnavailableError(error)) {
+    if (isSupabaseUnavailableError(error)) {
       return jsonError(
         "Database is currently unavailable. Your temporary session project could not be restored.",
         503,

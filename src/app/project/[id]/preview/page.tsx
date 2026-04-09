@@ -1,25 +1,26 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getFallbackProject } from "@/lib/fallback-store";
-import { db, isDatabaseUnavailableError } from "@/lib/db";
 import { buildPreviewDocument } from "@/lib/api";
+import { supabase, withSupabaseTimeout } from "@/lib/supabase";
 
 export default async function ProjectPreviewPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   const { id } = await params;
 
-  let project = null as Awaited<ReturnType<typeof db.project.findFirst>> | null;
+  let project: any = null;
   try {
-    project = await db.project.findFirst({
-      where: {
-        id,
-        userId: user.id,
-      },
-    });
+    const query = supabase
+      .from("Project")
+      .select("*")
+      .eq("id", id)
+      .eq("userId", user.id)
+      .maybeSingle();
+    const { data, error } = await withSupabaseTimeout(query);
+    if (error) throw error;
+    project = data;
   } catch (error) {
-    if (!isDatabaseUnavailableError(error)) {
-      throw error;
-    }
+    console.error("preview project load error", error);
   }
 
   const fallbackProject = await getFallbackProject(user, id);

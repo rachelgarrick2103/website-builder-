@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import type { Prisma } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
-import { db } from "@/lib/db";
 import { cloneFallbackProject, deleteFallbackProject, getFallbackProject, saveFallbackProject } from "@/lib/fallback-store";
 import { getOwnedProject, jsonError } from "@/lib/api";
+import { isSupabaseUnavailableError, supabase, withSupabaseTimeout } from "@/lib/supabase";
 
 export async function GET(
   _request: Request,
@@ -23,9 +22,12 @@ export async function GET(
     }
     return NextResponse.json({ project });
   } catch (error) {
+    if (!isSupabaseUnavailableError(error)) {
+      console.error("project get error", error);
+      return jsonError("Unable to load project right now.", 500);
+    }
     const fallbackProject = getFallbackProject(user, id);
     if (!fallbackProject) {
-      console.error("project get error", error);
       return jsonError("Project not found.", 404);
     }
     return NextResponse.json({ project: fallbackProject });
@@ -40,13 +42,14 @@ export async function DELETE(
   const { id } = await context.params;
 
   try {
-    const project = await db.project.findFirst({
-      where: {
-        id,
-        userId: user.id,
-      },
-      select: { id: true },
-    });
+    const lookupQuery = supabase
+      .from("Project")
+      .select("id")
+      .eq("id", id)
+      .eq("userId", user.id)
+      .maybeSingle();
+    const { data: project, error: lookupError } = await withSupabaseTimeout(lookupQuery);
+    if (lookupError) throw lookupError;
 
     if (!project) {
       const fallback = getFallbackProject(user, id);
@@ -57,14 +60,18 @@ export async function DELETE(
       return NextResponse.json({ ok: true });
     }
 
-    await db.project.delete({
-      where: { id: project.id },
-    });
+    const deleteQuery = supabase.from("Project").delete().eq("id", project.id).eq("userId", user.id);
+    const { error: deleteError } = await withSupabaseTimeout(deleteQuery);
+    if (deleteError) throw deleteError;
+
     return NextResponse.json({ ok: true });
   } catch (error) {
+    if (!isSupabaseUnavailableError(error)) {
+      console.error("project delete error", error);
+      return jsonError("Unable to delete project right now.", 500);
+    }
     const fallback = getFallbackProject(user, id);
     if (!fallback) {
-      console.error("project delete error", error);
       return jsonError("Project not found.", 404);
     }
     await deleteFallbackProject(user, id);
@@ -85,13 +92,14 @@ export async function POST(
   }
 
   try {
-    const project = await db.project.findFirst({
-      where: { id, userId: user.id },
-      include: {
-        messages: { orderBy: { createdAt: "asc" } },
-        assets: { orderBy: { createdAt: "asc" } },
-      },
-    });
+    const projectQuery = supabase
+      .from("Project")
+      .select("*, messages:Message(*), assets:Asset(*)")
+      .eq("id", id)
+      .eq("userId", user.id)
+      .maybeSingle();
+    const { data: project, error: projectError } = await withSupabaseTimeout(projectQuery);
+    if (projectError) throw projectError;
 
     if (!project) {
       const fallback = getFallbackProject(user, id);
@@ -102,8 +110,12 @@ export async function POST(
 
     const uniqueSlug = `${project.slug.slice(0, 40)}-${Math.random().toString(36).slice(2, 8)}`;
 
-    const duplicated = await db.project.create({
-      data: {
+    const nowIso = new Date().toISOString();
+    const duplicateId = crypto.randomUUID();
+    const duplicateInsert = supabase
+      .from("Project")
+      .insert({
+        id: duplicateId,
         userId: user.id,
         name: `${project.name} Copy`,
         slug: uniqueSlug,
@@ -111,45 +123,78 @@ export async function POST(
         templateType: project.templateType,
         businessType: project.businessType,
         websiteGoal: project.websiteGoal,
-        structuredData: project.structuredData as Prisma.InputJsonValue,
+        structuredData: project.structuredData,
         currentCodeHtml: project.currentCodeHtml,
         currentCodeCss: project.currentCodeCss,
         currentCodeJs: project.currentCodeJs,
         hasUnpublishedChanges: false,
-        messages: {
-          create: project.messages.map((message) => ({
-            role: message.role,
-            content: message.content,
-          })),
-        },
-        assets: {
-          create: project.assets.map((asset) => ({
-            userId: user.id,
-            fileUrl: asset.fileUrl,
-            fileType: asset.fileType,
-            originalName: asset.originalName,
-          })),
-        },
-        versions: {
-          create: [
-            {
-              label: "Duplicated baseline",
-              html: project.currentCodeHtml,
-              css: project.currentCodeCss,
-              js: project.currentCodeJs,
-              structuredData: project.structuredData as Prisma.InputJsonValue,
-            },
-          ],
-        },
-      },
-      select: { id: true },
+        publishedAt: null,
+        previewSnapshot: null,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      })
+      .select("id")
+      .single();
+    const { data: duplicated, error: duplicateInsertError } = await withSupabaseTimeout(duplicateInsert);
+    if (duplicateInsertError) throw duplicateInsertError;
+
+    const messages = Array.isArray(project.messages)
+      ? (project.messages as Array<{ role: string; content: string }>)
+      : [];
+    if (messages.length > 0) {
+      const messageInsert = supabase.from("Message").insert(
+        messages.map((message: { role: string; content: string }) => ({
+          id: crypto.randomUUID(),
+          projectId: duplicateId,
+          role: message.role,
+          content: message.content,
+          createdAt: nowIso,
+        })),
+      );
+      const { error: messageInsertError } = await withSupabaseTimeout(messageInsert);
+      if (messageInsertError) throw messageInsertError;
+    }
+
+    const assets = Array.isArray(project.assets)
+      ? (project.assets as Array<{ fileUrl: string; fileType: string; originalName: string }>)
+      : [];
+    if (assets.length > 0) {
+      const assetInsert = supabase.from("Asset").insert(
+        assets.map((asset: { fileUrl: string; fileType: string; originalName: string }) => ({
+          id: crypto.randomUUID(),
+          projectId: duplicateId,
+          userId: user.id,
+          fileUrl: asset.fileUrl,
+          fileType: asset.fileType,
+          originalName: asset.originalName,
+          createdAt: nowIso,
+        })),
+      );
+      const { error: assetInsertError } = await withSupabaseTimeout(assetInsert);
+      if (assetInsertError) throw assetInsertError;
+    }
+
+    const versionInsert = supabase.from("Version").insert({
+      id: crypto.randomUUID(),
+      projectId: duplicateId,
+      label: "Duplicated baseline",
+      html: project.currentCodeHtml,
+      css: project.currentCodeCss,
+      js: project.currentCodeJs,
+      structuredData: project.structuredData,
+      createdAt: nowIso,
     });
+    const { error: versionInsertError } = await withSupabaseTimeout(versionInsert);
+    if (versionInsertError) throw versionInsertError;
 
     return NextResponse.json({ ok: true, projectId: duplicated.id });
   } catch (error) {
+    if (!isSupabaseUnavailableError(error)) {
+      console.error("project duplicate error", error);
+      return jsonError("Unable to duplicate project right now.", 500);
+    }
     const fallback = getFallbackProject(user, id);
     if (!fallback) {
-      console.error("project duplicate error", error);
       return jsonError("Project not found.", 404);
     }
     const cloned = await cloneFallbackProject(user, fallback);

@@ -1,7 +1,6 @@
 import { randomUUID } from "crypto";
-import type { MessageRole, ProjectStatus } from "@prisma/client";
 import type { SessionUser } from "@/lib/auth";
-import type { StructuredProjectData } from "@/lib/types";
+import type { MessageRole, ProjectStatus, StructuredProjectData } from "@/lib/types";
 import { setSessionFallbackState } from "@/lib/auth";
 
 type FallbackMessage = {

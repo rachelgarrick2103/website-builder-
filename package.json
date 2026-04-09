@@ -6,14 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint .",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "postinstall": "prisma generate"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@prisma/client": "^6.7.0",
+    "@supabase/supabase-js": "^2.103.0",
     "@upstash/ratelimit": "^2.0.6",
     "@upstash/redis": "^1.34.9",
     "@vercel/blob": "^0.27.0",
@@ -35,7 +32,6 @@
     "eslint": "^9.26.0",
     "eslint-config-next": "^16.0.0",
     "postcss": "^8.5.3",
-    "prisma": "^6.7.0",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3"
   }

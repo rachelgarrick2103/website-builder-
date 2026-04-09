@@ -1,9 +1,10 @@
 import { requireUser } from "@/lib/auth";
-import { db, isDatabaseUnavailableError } from "@/lib/db";
 import { FallbackProjectLoader } from "@/components/fallback-project-loader";
 import { ProjectBuilder } from "@/components/project-builder";
 import { buildPreviewDocument } from "@/lib/api";
 import { getFallbackProject } from "@/lib/fallback-store";
+import { getOwnedProject } from "@/lib/api";
+import { isSupabaseUnavailableError } from "@/lib/supabase";
 
 type Params = Promise<{ id: string }>;
 
@@ -12,45 +13,17 @@ export default async function ProjectPage({ params }: { params: Params }) {
   const { id } = await params;
 
   let project: any = null;
-  let databaseAvailable = true;
   try {
-    const dbProjectPromise = db.project.findFirst({
-      where: {
-        id,
-        userId: user.id,
-      },
-      include: {
-        messages: {
-          orderBy: { createdAt: "asc" },
-        },
-        assets: {
-          orderBy: { createdAt: "desc" },
-        },
-        versions: {
-          orderBy: { createdAt: "desc" },
-        },
-      },
-    });
-    const timeoutPromise = new Promise<null>((resolve) => {
-      setTimeout(() => resolve(null), 3000);
-    });
-    project = await Promise.race([dbProjectPromise, timeoutPromise]);
-    if (!project) {
-      databaseAvailable = false;
-    }
+    project = await getOwnedProject(id, user.id);
   } catch (error) {
-    if (!isDatabaseUnavailableError(error)) {
+    if (!isSupabaseUnavailableError(error)) {
       throw error;
     }
-    databaseAvailable = false;
   }
 
   if (!project) {
     const fallbackProject = await getFallbackProject(user, id);
     if (!fallbackProject) {
-      if (databaseAvailable) {
-        return <FallbackProjectLoader projectId={id} />;
-      }
       return <FallbackProjectLoader projectId={id} />;
     }
     const initialPreviewDoc = buildPreviewDocument(

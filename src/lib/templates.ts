@@ -1,5 +1,4 @@
-import type { BusinessType, TemplateType } from "@prisma/client";
-import type { StructuredProjectData } from "@/lib/types";
+import type { BusinessType, TemplateType, StructuredProjectData } from "@/lib/types";
 
 const baseStyles = `
   * { box-sizing: border-box; }

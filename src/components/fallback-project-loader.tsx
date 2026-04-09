@@ -13,7 +13,7 @@ export function FallbackProjectLoader({ projectId }: Props) {
 
   useEffect(() => {
     const key = `fallback_project_${projectId}`;
-    const raw = sessionStorage.getItem(key);
+    const raw = sessionStorage.getItem(key) ?? localStorage.getItem(key);
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as {
@@ -43,6 +43,11 @@ export function FallbackProjectLoader({ projectId }: Props) {
             assets: Array.isArray(parsed.assets) ? parsed.assets : [],
           };
           sessionStorage.setItem(key, JSON.stringify(normalizedProject));
+          try {
+            localStorage.setItem(key, JSON.stringify(normalizedProject));
+          } catch {
+            // Ignore storage quota or disabled localStorage failures.
+          }
           router.refresh();
           return;
         }

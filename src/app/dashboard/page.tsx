@@ -1,13 +1,13 @@
 import Link from "next/link";
-import { ProjectStatus } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
-import { db, isDatabaseUnavailableError } from "@/lib/db";
 import { listFallbackProjects } from "@/lib/fallback-store";
 import { businessTypeLabel, goalLabel } from "@/lib/project-data";
 import { CreateProjectModal } from "@/components/create-project-modal";
 import { DeleteProjectButton } from "@/components/delete-project-button";
 import { DuplicateProjectButton } from "@/components/duplicate-project-button";
 import { LogoutButton } from "@/components/logout-button";
+import { ProjectStatus } from "@/lib/types";
+import { supabase, withSupabaseTimeout } from "@/lib/supabase";
 
 function statusChip(status: ProjectStatus, hasUpdates: boolean) {
   if (status === ProjectStatus.LIVE && hasUpdates) return "Update available";
@@ -38,17 +38,24 @@ export default async function DashboardPage() {
   }> = [];
 
   try {
-    projects = await db.project.findMany({
-      where: { userId: user.id },
-      orderBy: { updatedAt: "desc" },
-    });
-  } catch (error) {
-    if (!isDatabaseUnavailableError(error)) {
+    const query = supabase
+      .from("Project")
+      .select("id, name, businessType, websiteGoal, updatedAt, deployedUrl, status, hasUnpublishedChanges")
+      .eq("userId", user.id)
+      .order("updatedAt", { ascending: false });
+    const { data, error } = await withSupabaseTimeout(query);
+    if (error) {
       throw error;
     }
+    projects = (data ?? []).map((project: any) => ({
+      ...project,
+      updatedAt: new Date(project.updatedAt),
+      status: project.status as ProjectStatus,
+    }));
+  } catch (error) {
     dbUnavailable = true;
     const fallback = await listFallbackProjects(user);
-    projects = fallback.map((project) => ({
+    projects = fallback.map((project: any) => ({
       id: project.id,
       name: project.name,
       businessType: project.businessType,

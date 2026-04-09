@@ -1,5 +1,4 @@
-import { BusinessType, TemplateType, WebsiteGoal } from "@prisma/client";
-import type { StructuredProjectData } from "@/lib/types";
+import { BusinessType, TemplateType, WebsiteGoal, type StructuredProjectData } from "@/lib/types";
 
 export function labelToBusinessType(value: string): BusinessType {
   const normalized = value.trim().toLowerCase();
